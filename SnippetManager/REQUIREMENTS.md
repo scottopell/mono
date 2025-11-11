@@ -10,210 +10,229 @@ A minimal iOS text snippet manager enabling users to save and reuse text across 
 
 ## Functional Requirements (EARS Notation)
 
-### 1. Snippet Management (Main App)
+### 1. Viewing and Managing Snippets (Main App)
 
-#### 1.1 Viewing Snippets
-- **R1.1.1**: The main app shall display all saved snippets in a scrollable list.
-- **R1.1.2**: The main app shall sort snippets with newest first.
-- **R1.1.3**: For each snippet, the main app shall display the first 50 characters of text.
-- **R1.1.4**: For each snippet, the main app shall display a relative timestamp (e.g., "2 hrs ago").
-- **R1.1.5**: WHEN no snippets exist, the main app shall display "No Snippets Yet" with instructions.
+#### 1.1 Viewing Saved Snippets
+- **R1.1.1**: WHEN a user opens the main app, they shall see all their saved snippets in a scrollable list.
+- **R1.1.2**: Users shall see their most recently saved snippets at the top of the list.
+- **R1.1.3**: Users shall see the first 50 characters of each snippet's text.
+- **R1.1.4**: Users shall see how long ago each snippet was created (e.g., "2 hrs ago", "3 days ago").
+- **R1.1.5**: WHEN a user has no saved snippets, they shall see a message "No Snippets Yet" with instructions to use the share extension.
 
-#### 1.2 Deleting Snippets
-- **R1.2.1**: WHEN a user swipes left on a snippet, the main app shall reveal a delete button.
-- **R1.2.2**: WHEN a user taps the delete button, the main app shall immediately remove the snippet.
-- **R1.2.3**: WHEN a snippet is deleted, the main app shall update the list view immediately.
+#### 1.2 Deleting Unwanted Snippets
+- **R1.2.1**: WHEN a user swipes left on any snippet, they shall see a delete button.
+- **R1.2.2**: WHEN a user taps the delete button, the snippet shall be immediately removed from their list.
+- **R1.2.3**: Users shall see the updated list immediately after deleting a snippet.
 
-#### 1.3 Adding Snippets
-- **R1.3.1**: The main app shall NOT provide a manual "add snippet" button.
-- **R1.3.2**: The main app shall display instructions directing users to the share extension.
+#### 1.3 Understanding App Limitations
+- **R1.3.1**: Users shall understand that snippets can only be added via the share extension (not manually in the main app).
 
-### 2. Share Extension
+### 2. Saving Snippets from Other Apps (Share Extension)
 
-#### 2.1 Activation
-- **R2.1.1**: WHEN a user shares text from any iOS app, the share extension shall appear as "Save Snippet" in the share sheet.
-- **R2.1.2**: The share extension shall accept plain text input only.
-- **R2.1.3**: WHEN text is shared, the share extension shall display the full text content.
+#### 2.1 Accessing the Save Function
+- **R2.1.1**: WHEN a user selects text in any iOS app and taps the Share button, they shall see "Save Snippet" as an option.
+- **R2.1.2**: Users shall be able to save plain text only (not images, files, or rich formatting).
 
-#### 2.2 Saving Snippets
-- **R2.2.1**: The share extension shall provide "Save" and "Cancel" buttons.
-- **R2.2.2**: WHEN a user taps "Save", the extension shall store the snippet with a UUID and timestamp.
-- **R2.2.3**: WHEN a user taps "Save", the extension shall display "Saved!" confirmation.
-- **R2.2.4**: WHEN the confirmation appears, the extension shall automatically dismiss after 1 second.
-- **R2.2.5**: WHEN a user taps "Cancel", the extension shall dismiss without saving.
+#### 2.2 Reviewing and Saving Text
+- **R2.2.1**: WHEN a user taps "Save Snippet", they shall see the full text they are about to save.
+- **R2.2.2**: Users shall see "Save" and "Cancel" buttons to confirm or abort the operation.
+- **R2.2.3**: WHEN a user taps "Save", they shall see a "Saved!" confirmation message.
+- **R2.2.4**: Users shall be returned to their original app within 1 second after seeing the confirmation.
+- **R2.2.5**: WHEN a user taps "Cancel", they shall be returned to their original app without saving anything.
 
-#### 2.3 Error Handling
-- **R2.3.1**: IF text cannot be extracted from the shared item, THEN the extension shall display an error alert.
-- **R2.3.2**: WHEN an error occurs, the extension shall provide an "OK" button to dismiss.
+#### 2.3 Understanding Save Errors
+- **R2.3.1**: IF the selected content cannot be saved as text, THEN users shall see an error message explaining the problem.
+- **R2.3.2**: WHEN an error occurs, users shall be able to tap "OK" to dismiss and return to their original app.
 
-### 3. Keyboard Extension
+### 3. Inserting Snippets via Keyboard (Keyboard Extension)
 
-#### 3.1 Activation
-- **R3.1.1**: The keyboard extension shall be installable via iOS Settings → Keyboards.
-- **R3.1.2**: WHEN activated, the keyboard shall appear as "SnippetKeyboard".
-- **R3.1.3**: WHEN a user switches to the keyboard (via globe key), the keyboard extension shall display.
+#### 3.1 Enabling the Keyboard
+- **R3.1.1**: Users shall be able to add "SnippetKeyboard" through iOS Settings → General → Keyboard → Keyboards → Add New Keyboard.
+- **R3.1.2**: WHEN a user taps the globe key on their keyboard, they shall be able to switch to SnippetKeyboard.
 
-#### 3.2 Displaying Snippets
-- **R3.2.1**: The keyboard extension shall display snippets in a horizontal scrollable list.
-- **R3.2.2**: The keyboard extension shall limit height to approximately 100 points (2-3 rows).
-- **R3.2.3**: For each snippet, the keyboard extension shall display up to 60 characters of text.
-- **R3.2.4**: For each snippet, the keyboard extension shall display a relative timestamp.
-- **R3.2.5**: WHEN no snippets exist, the keyboard extension shall display "No snippets saved".
+#### 3.2 Browsing Available Snippets
+- **R3.2.1**: WHEN a user activates the SnippetKeyboard, they shall see their saved snippets in a horizontal scrollable view.
+- **R3.2.2**: Users shall see up to 60 characters of preview text for each snippet.
+- **R3.2.3**: Users shall see when each snippet was created (relative time).
+- **R3.2.4**: Users shall be able to scroll horizontally to browse all their snippets.
+- **R3.2.5**: WHEN a user has no saved snippets, they shall see "No snippets saved" message.
 
-#### 3.3 Inserting Snippets
-- **R3.3.1**: WHEN a user taps a snippet, the keyboard extension shall insert the full text at the cursor position.
-- **R3.3.2**: WHEN text is inserted, the keyboard extension shall remain visible.
-- **R3.3.3**: The keyboard extension shall insert text without modification (preserve exact formatting).
+#### 3.3 Inserting Snippet Text
+- **R3.3.1**: WHEN a user taps any snippet in the keyboard, the complete snippet text shall be inserted at their cursor position.
+- **R3.3.2**: Users shall see the exact text they saved, without any modifications or formatting changes.
+- **R3.3.3**: WHEN a user inserts a snippet, they shall be able to continue typing immediately (keyboard stays active).
 
-### 4. Data Synchronization
+### 4. Data Consistency Across App Components
 
-#### 4.1 Shared Storage
-- **R4.1.1**: The system shall store all snippets in shared UserDefaults via App Groups.
-- **R4.1.2**: The system shall make snippets immediately available to all three app components.
-- **R4.1.3**: WHEN a snippet is saved via the share extension, the main app shall reflect the change when opened.
-- **R4.1.4**: WHEN a snippet is deleted in the main app, the keyboard extension shall reflect the change when activated.
-
-#### 4.2 Data Model
-- **R4.2.1**: Each snippet shall have a unique UUID identifier.
-- **R4.2.2**: Each snippet shall store the complete text content (no length limit).
-- **R4.2.3**: Each snippet shall store a creation timestamp.
-- **R4.2.4**: The system shall encode snippets as JSON for storage.
+#### 4.1 Seeing Changes Everywhere
+- **R4.1.1**: WHEN a user saves a snippet via the share extension, they shall see it immediately in the main app (when opened).
+- **R4.1.2**: WHEN a user saves a snippet via the share extension, they shall see it in the keyboard extension (when activated).
+- **R4.1.3**: WHEN a user deletes a snippet in the main app, it shall no longer appear in the keyboard extension.
+- **R4.1.4**: Users shall never lose saved snippets between app launches.
 
 ---
 
 ## User Journeys
 
 ### Journey 1: First-Time Setup
-1. User installs SnippetManager app from App Store
-2. User opens main app (sees "No Snippets Yet" message)
-3. User opens iOS Settings → General → Keyboard → Keyboards
-4. User taps "Add New Keyboard"
-5. User selects "SnippetKeyboard" from list
-6. Setup complete
+**Goal**: User installs and configures the app to start using snippets
 
-### Journey 2: Saving a Snippet
-1. User is reading an email/article/note in any iOS app
-2. User selects text to save
-3. User taps Share button
-4. User scrolls share sheet and taps "Save Snippet"
-5. User reviews text in share extension
-6. User taps "Save" button
-7. User sees "Saved!" confirmation
-8. Extension auto-dismisses after 1 second
-9. Snippet now available in app and keyboard
+1. User downloads and installs SnippetManager from App Store
+2. User opens the app and sees "No Snippets Yet" with setup instructions
+3. User opens iOS Settings app
+4. User navigates to General → Keyboard → Keyboards
+5. User taps "Add New Keyboard"
+6. User selects "SnippetKeyboard" from the list
+7. User returns to any app and can now access the snippet keyboard
 
-### Journey 3: Using a Snippet
-1. User is composing a message/email in any app
-2. User taps text input field to bring up keyboard
-3. User taps globe key to switch to SnippetKeyboard
-4. User scrolls horizontally through saved snippets
-5. User taps desired snippet
-6. Text is inserted at cursor position
-7. User continues typing or switches back to system keyboard
+**Success**: User can switch to SnippetKeyboard using globe key
 
-### Journey 4: Managing Snippets
+### Journey 2: Saving a Snippet for Reuse
+**Goal**: User saves frequently-used text for quick access later
+
+1. User is reading an email containing their mailing address
+2. User selects the address text (long press, drag handles)
+3. User taps the Share button in the system menu
+4. User scrolls the share sheet and taps "Save Snippet"
+5. User sees their address displayed in the share extension
+6. User reviews the text to confirm it's correct
+7. User taps "Save" button
+8. User sees "Saved!" confirmation
+9. User is automatically returned to their email app
+10. User opens SnippetManager app and sees the new snippet at the top of the list
+
+**Success**: Address is saved and appears in both main app and keyboard
+
+### Journey 3: Using a Snippet in Daily Work
+**Goal**: User quickly inserts saved text without retyping
+
+1. User opens Messages app to text a friend
+2. User taps in the message field to bring up keyboard
+3. User taps the globe key to cycle through keyboards
+4. User sees SnippetKeyboard with their saved snippets
+5. User scrolls horizontally to find their address snippet
+6. User sees "123 Main St..." preview
+7. User taps the address snippet
+8. User sees complete address inserted into the message
+9. User continues typing their message or switches back to system keyboard
+
+**Success**: User inserts saved text without copy/paste or retyping
+
+### Journey 4: Managing Saved Snippets
+**Goal**: User removes outdated snippets to keep their collection organized
+
 1. User opens SnippetManager main app
-2. User sees list of all saved snippets (newest first)
-3. User browses snippets by reading first 50 characters
-4. User swipes left on unwanted snippet
-5. User taps "Delete" button
-6. Snippet is immediately removed from list
-7. Changes reflected in keyboard extension
+2. User sees 15 saved snippets, sorted newest first
+3. User scrolls down and finds an outdated snippet (old phone number)
+4. User swipes left on the outdated snippet
+5. User sees red "Delete" button appear
+6. User taps "Delete"
+7. User sees snippet immediately disappear from the list
+8. User later uses keyboard and notices snippet is no longer there
+
+**Success**: Unwanted snippet is removed from all locations
 
 ---
 
-## Non-Functional Requirements
+## User Experience Requirements
 
-### Performance
-- **R5.1**: The main app shall load and display snippets within 0.5 seconds.
-- **R5.2**: The keyboard extension shall appear within system keyboard switching time.
-- **R5.3**: The share extension shall launch within 1 second of activation.
+### Responsiveness
+- **R5.1**: WHEN a user opens the main app, they shall see their snippets within 0.5 seconds.
+- **R5.2**: WHEN a user switches to the keyboard extension, it shall appear within normal keyboard switching time.
+- **R5.3**: WHEN a user activates the share extension, it shall launch within 1 second.
 
-### Usability
-- **R6.1**: The system shall use SwiftUI for all user interfaces.
-- **R6.2**: The system shall follow iOS Human Interface Guidelines.
-- **R6.3**: All text shall be readable with system font sizes.
-- **R6.4**: The system shall support both light and dark mode.
+### Visual Clarity
+- **R6.1**: Users shall see modern, native iOS interface design in all app components.
+- **R6.2**: Users shall be able to read all text comfortably at their preferred system font size.
+- **R6.3**: WHEN a user has dark mode enabled, they shall see appropriate dark-themed interfaces.
+- **R6.4**: WHEN a user has light mode enabled, they shall see appropriate light-themed interfaces.
 
-### Compatibility
-- **R7.1**: The system shall require iOS 16.0 or later.
-- **R7.2**: The system shall support iPhone and iPad.
-- **R7.3**: The system shall support portrait and landscape orientations.
+### Device Compatibility
+- **R7.1**: Users with iOS 16.0 or later shall be able to install and use the app.
+- **R7.2**: Users with iPhones shall be able to use all features.
+- **R7.3**: Users with iPads shall be able to use all features.
+- **R7.4**: WHEN a user rotates their device, the interface shall adapt to portrait or landscape orientation.
 
-### Security & Privacy
-- **R8.1**: The keyboard extension shall NOT request "Allow Full Access" permission.
-- **R8.2**: The system shall store all data locally on device only.
-- **R8.3**: The system shall NOT transmit data over the network.
-- **R8.4**: The system shall use App Groups for secure inter-app communication.
+### Privacy & Trust
+- **R8.1**: Users shall NOT be required to grant "Allow Full Access" permission to the keyboard.
+- **R8.2**: Users shall have confidence that all snippet data stays on their device only.
+- **R8.3**: Users shall never have their snippets transmitted over the internet.
+- **R8.4**: Users shall not need to create an account or sign in.
 
 ---
 
 ## Explicitly Out of Scope
 
-The following features are intentionally excluded from this minimal implementation:
+The following user capabilities are intentionally excluded from this minimal implementation:
 
-### Not Implemented
-- ❌ Search functionality
-- ❌ Categories, tags, or folders
-- ❌ Editing existing snippets
-- ❌ Manual snippet creation in main app
-- ❌ Snippet reordering or favoriting
-- ❌ Cloud sync (iCloud)
-- ❌ Multiple device synchronization
-- ❌ Export/import functionality
-- ❌ Snippet templates or variables
-- ❌ Rich text formatting
-- ❌ Image or file attachments
-- ❌ Snippet usage statistics
-- ❌ Custom keyboard layouts
-- ❌ Snippet previews in keyboard (beyond 60 chars)
-- ❌ Snippet sharing between users
-- ❌ Backup/restore functionality
+### Not Available to Users
+- ❌ Users cannot search for snippets by keyword
+- ❌ Users cannot organize snippets into categories or folders
+- ❌ Users cannot edit existing snippets (must delete and re-save)
+- ❌ Users cannot manually create snippets in the main app
+- ❌ Users cannot reorder snippets or mark favorites
+- ❌ Users cannot sync snippets via iCloud
+- ❌ Users cannot access snippets on multiple devices
+- ❌ Users cannot export or import snippet collections
+- ❌ Users cannot use variables or templates in snippets
+- ❌ Users cannot save formatting, images, or attachments
+- ❌ Users cannot see usage statistics for snippets
+- ❌ Users cannot customize the keyboard layout
+- ❌ Users cannot see full snippet text in keyboard preview (only 60 chars)
+- ❌ Users cannot share snippets with other users
+- ❌ Users cannot backup or restore their snippets
 
 ### Design Rationale
-This minimal scope prioritizes:
-1. **Working code over features**: Every feature works reliably
-2. **Simplicity**: Easy to understand and maintain
-3. **Quick implementation**: Can be built in a single session
-4. **Learning value**: Demonstrates core iOS extension concepts
+This minimal scope ensures:
+1. **Reliability**: Every feature works consistently
+2. **Clarity**: Users understand all capabilities immediately
+3. **Quick value**: Users can be productive in minutes
+4. **Educational clarity**: Demonstrates core iOS extension patterns without complexity
 
 ---
 
-## Acceptance Criteria
+## Acceptance Criteria (User-Facing)
 
-### Main App
-- [ ] App launches without crashes
-- [ ] Empty state displays helpful message
-- [ ] List displays all saved snippets
-- [ ] Snippets show correct preview (50 chars) and timestamp
-- [ ] Swipe-to-delete works on all snippets
-- [ ] List updates immediately after deletion
+### Main App Experience
+- [ ] User can open app without crashes or errors
+- [ ] User sees helpful message when they have no snippets yet
+- [ ] User sees all their saved snippets in a list
+- [ ] User can read the first 50 characters of each snippet
+- [ ] User can see when each snippet was created
+- [ ] User can swipe left on any snippet to reveal delete
+- [ ] User sees snippet disappear immediately after deleting
+- [ ] User sees newest snippets at the top
 
-### Share Extension
-- [ ] Appears in share sheet when sharing text
-- [ ] Displays shared text correctly
-- [ ] Save button persists snippet
-- [ ] Cancel button dismisses without saving
-- [ ] Confirmation appears and auto-dismisses
-- [ ] Error handling works for invalid input
+### Share Extension Experience
+- [ ] User sees "Save Snippet" option when sharing text from any app
+- [ ] User can review the text they're about to save
+- [ ] User can save the snippet by tapping "Save"
+- [ ] User can cancel without saving by tapping "Cancel"
+- [ ] User sees "Saved!" confirmation after saving
+- [ ] User is returned to their original app within 1 second
+- [ ] User sees clear error message if something goes wrong
 
-### Keyboard Extension
-- [ ] Appears in iOS keyboard list after installation
-- [ ] Shows all saved snippets in horizontal scroll
-- [ ] Tap on snippet inserts full text
-- [ ] Empty state message appears when no snippets
-- [ ] Respects height constraints (~100pt)
-- [ ] Snippets are readable and properly formatted
+### Keyboard Extension Experience
+- [ ] User can add SnippetKeyboard through iOS Settings
+- [ ] User can switch to keyboard using globe key
+- [ ] User sees all their snippets in a horizontal scrollable list
+- [ ] User can read preview text for each snippet
+- [ ] User can scroll to see all snippets
+- [ ] User can tap any snippet to insert its text
+- [ ] User sees exact text inserted at cursor position
+- [ ] User sees "No snippets saved" when they have none
+- [ ] User can continue typing after inserting a snippet
 
-### Data Synchronization
-- [ ] Snippets saved in share extension appear in main app
-- [ ] Snippets deleted in main app disappear from keyboard
-- [ ] No data loss between app launches
-- [ ] App Groups configured correctly
-- [ ] All three components access same data store
+### Cross-Component Consistency
+- [ ] User sees new snippets in main app after saving via share extension
+- [ ] User sees new snippets in keyboard after saving via share extension
+- [ ] User no longer sees deleted snippets in keyboard after deleting in main app
+- [ ] User's snippets persist across app launches
+- [ ] User never loses data
 
-### System Integration
-- [ ] App installs successfully
-- [ ] Extensions bundle with main app
-- [ ] Code signing works correctly
-- [ ] App passes App Store validation (if submitted)
+### Overall User Satisfaction
+- [ ] User can complete first-time setup in under 2 minutes
+- [ ] User can save their first snippet in under 10 seconds
+- [ ] User can insert a snippet in under 5 seconds
+- [ ] User understands how to use all features without external documentation
+- [ ] User feels confident their data is private and secure
