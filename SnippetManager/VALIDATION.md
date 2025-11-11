@@ -66,10 +66,10 @@
 
 **R1.3.1**: Users shall understand that snippets can only be added via the share extension (not manually in the main app).
 
-- **Status:** ⚠️ PARTIAL
-- **Evidence:** `ContentView.swift:25` - Empty state message mentions share extension
-- **Gap:** Message says "Use the share extension" but doesn't explicitly state "You cannot add snippets manually in this app"
-- **Assessment:** Users will likely infer the limitation but it's not explicitly stated
+- **Status:** ✅ IMPLEMENTED
+- **Evidence:** `ContentView.swift:25-34` - Empty state message explicitly states limitation with instructions
+- **Code:** "Snippets can only be added using the share extension" + step-by-step instructions
+- **Assessment:** Clear communication that manual addition is not possible
 
 ---
 
@@ -369,17 +369,15 @@
 
 | Status | Count | Percentage |
 |--------|-------|------------|
-| ✅ Fully Implemented | 35 | 79.5% |
-| ⚠️ Partially Implemented | 2 | 4.5% |
-| 🔬 Requires Testing | 7 | 16.0% |
+| ✅ Fully Implemented | 36 | 81.8% |
+| ⚠️ Partially Implemented | 1 | 2.3% |
+| 🔬 Requires Testing | 7 | 15.9% |
 | ❌ Not Implemented | 0 | 0% |
 | **Total Requirements** | **44** | **100%** |
 
 ### Partial Implementation Details
 
-1. **R1.3.1** (Understanding App Limitations): Empty state message mentions share extension but doesn't explicitly state manual addition is impossible. Users will likely infer but could be more explicit.
-
-2. **R6.2** (Font Size Accessibility): Main app fully supports Dynamic Type. Keyboard extension uses fixed font sizes (14pt, 10pt) that won't scale with accessibility settings. This is a minor issue for low-vision users.
+1. **R6.2** (Font Size Accessibility): Main app fully supports Dynamic Type. Keyboard extension uses fixed font sizes (14pt, 10pt) that won't scale with accessibility settings. This is a minor issue for low-vision users.
 
 ### Requirements Requiring Runtime Verification
 
@@ -396,7 +394,6 @@ The following requirements are correctly implemented in code but cannot be verif
 
 **Minor Issues:**
 - Keyboard extension doesn't respect system font size preferences (accessibility concern)
-- Empty state message could be more explicit about limitations
 
 **Confidence Level:**
 - **Code Quality**: High - Clean SwiftUI implementation following iOS best practices
@@ -461,7 +458,6 @@ The following requirements are correctly implemented in code but cannot be verif
 
 ### Medium Priority (Should Address)
 1. **Keyboard Font Accessibility**: Make keyboard extension font sizes respect Dynamic Type
-2. **Empty State Messaging**: More explicitly state that manual snippet addition is not available
 
 ### Low Priority (Nice to Have)
 1. **Performance Profiling**: Measure actual load times on variety of devices
