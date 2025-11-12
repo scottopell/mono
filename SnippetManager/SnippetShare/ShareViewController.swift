@@ -64,8 +64,8 @@ class ShareViewController: UIViewController {
     private func showShareView(with text: String) {
         let shareView = ShareView(
             text: text,
-            onSave: { [weak self] in
-                self?.saveSnippet(text)
+            onSave: { [weak self] isTimed in
+                self?.saveSnippet(text, isTimed: isTimed)
             },
             onCancel: { [weak self] in
                 self?.cancel()
@@ -88,8 +88,9 @@ class ShareViewController: UIViewController {
         self.hostingController = hostingController
     }
 
-    private func saveSnippet(_ text: String) {
-        let snippet = Snippet(text: text)
+    // REQ-SM-008: Save snippet with selected type
+    private func saveSnippet(_ text: String, isTimed: Bool) {
+        let snippet = Snippet(text: text, isTimed: isTimed)
         storage.saveSnippet(snippet)
 
         // Show saved confirmation briefly before dismissing

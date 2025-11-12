@@ -33,21 +33,21 @@ SnippetManager uses a shared data architecture where three iOS components (main 
 | **REQ-SM-001:** View All Saved Snippets | ✅ | ✅ | ⚠️ Manual | Main app displays snippets from storage, sorted newest first. Manual testing only. |
 | **REQ-SM-002:** Understand Empty State | N/A | ✅ | ⚠️ Manual | Empty state shows clear instructions. Recently improved message clarity. |
 | **REQ-SM-003:** Delete Unwanted Snippets | ✅ | ✅ | ⚠️ Manual | Swipe-to-delete works with immediate UI update and storage removal. |
-| **REQ-SM-004:** Distinguish Snippet Types Visually | N/A | ❌ | ❌ | **Gap:** No visual indicators for timed snippets. Need clock icon and expiration text. |
-| **REQ-SM-005:** Hide Expired Timed Snippets | ❌ | N/A | ❌ | **Gap:** No expiration filtering in `loadSnippets()`. Need filter logic. |
+| **REQ-SM-004:** Distinguish Snippet Types Visually | N/A | ✅ | ⚠️ Manual | Main app shows orange clock icon and "Expires in X days" for timed snippets in `SnippetRow` (ContentView.swift:72-84). |
+| **REQ-SM-005:** Hide Expired Timed Snippets | ✅ | N/A | ⚠️ Manual | Filter logic in `SnippetStorage.loadSnippets()` removes expired timed snippets (SnippetStorage.swift:38-52). |
 | **REQ-SM-006:** Access Save Function from Any App | ✅ | ✅ | ⚠️ Manual | Share extension appears in share sheet for text. Extension point configured correctly. |
 | **REQ-SM-007:** Review Text Before Saving | N/A | ✅ | ⚠️ Manual | Share extension displays full text with Save/Cancel buttons. |
-| **REQ-SM-008:** Choose Snippet Type When Saving | N/A | ❌ | ❌ | **Gap:** No Regular/Timed picker in share extension UI. |
+| **REQ-SM-008:** Choose Snippet Type When Saving | ✅ | ✅ | ⚠️ Manual | Segmented picker in share extension (ShareView.swift:29-45). Shows "Expires in 7 days" helper text for timed snippets. |
 | **REQ-SM-009:** Confirm Successful Save | ✅ | ✅ | ⚠️ Manual | "Saved!" confirmation appears and auto-dismisses after 1 second. Works for regular snippets. |
 | **REQ-SM-010:** Handle Save Errors Gracefully | N/A | ✅ | ⚠️ Manual | Error alert shows for non-text content with clear message. |
 | **REQ-SM-011:** Enable Custom Keyboard | ✅ | N/A | ⚠️ Manual | Keyboard extension configured correctly in Info.plist. Appears in Settings → Keyboards. |
 | **REQ-SM-012:** Browse Snippets in Keyboard | N/A | ✅ | ⚠️ Manual | Horizontal scroll with 60-char preview and timestamps. 100pt height constraint. |
-| **REQ-SM-013:** Show Snippet Type in Keyboard | N/A | ❌ | ❌ | **Gap:** No visual indicators for timed snippets in keyboard. Need compact "3d left" format. |
+| **REQ-SM-013:** Show Snippet Type in Keyboard | N/A | ✅ | ⚠️ Manual | Keyboard shows orange clock icon and compact format "3d left" for timed snippets (KeyboardView.swift:50-62). |
 | **REQ-SM-014:** Insert Snippet Text | ✅ | N/A | ⚠️ Manual | Uses `textDocumentProxy.insertText()`. Text inserted without modification. Keyboard stays active. |
 | **REQ-SM-015:** Handle Empty Keyboard State | N/A | ✅ | ⚠️ Manual | Shows "No snippets saved" when empty. |
 | **REQ-SM-016:** Share Data Across Components | ✅ | N/A | ⚠️ Manual | App Groups configured. All components use same `SnippetStorage` class. Requires runtime verification. |
 | **REQ-SM-017:** Persist Snippets Across Sessions | ✅ | N/A | ⚠️ Manual | UserDefaults persists to disk automatically. Requires device testing. |
-| **REQ-SM-018:** Store Snippet Metadata | 🔄 | N/A | ❌ | **Gap:** `isTimed` and `expirationDate` fields not yet added to Snippet struct. |
+| **REQ-SM-018:** Store Snippet Metadata | ✅ | N/A | ⚠️ Manual | `isTimed` and `expirationDate` fields added to Snippet struct (Snippet.swift:15-16). Custom decoder for backwards compatibility (Snippet.swift:28-36). |
 | **REQ-SM-019:** Fast App Launch | ✅ | ✅ | 🔬 | Synchronous UserDefaults load. No blocking operations. Requires performance measurement. |
 | **REQ-SM-020:** Native iOS Visual Design | N/A | ✅ | ⚠️ Manual | Uses system components, colors, and button styles throughout. Supports dark mode. |
 | **REQ-SM-021:** Respect System Accessibility Settings | N/A | 🟡 | ⚠️ Manual | Main app and share extension respect Dynamic Type. Keyboard uses fixed fonts (known limitation). |
@@ -55,43 +55,20 @@ SnippetManager uses a shared data architecture where three iOS components (main 
 | **REQ-SM-023:** No Network Access | ✅ | ✅ | ✅ | **Verified:** No network code in codebase. All data local. |
 | **REQ-SM-024:** Minimal Keyboard Permissions | ✅ | N/A | ✅ | **Verified:** `RequestsOpenAccess = false` in Info.plist. |
 
-**Progress:** 14 of 24 complete (58%)
+**Progress:** 19 of 24 complete (79%)
 
 ## Implementation Gaps
 
-### Critical Gaps (Block Timed Snippets Feature)
+### Timed Snippets Feature: Complete ✅
 
-**REQ-SM-018:** Store Snippet Metadata
-- **Status:** Data model lacks `isTimed` and `expirationDate` fields
-- **Impact:** Cannot save or identify timed snippets
-- **Work:** Add fields to `Snippet` struct with backwards-compatible defaults
-- **Estimate:** 30 minutes (includes testing)
+All critical timed snippets requirements have been implemented:
+- ✅ REQ-SM-018: Snippet metadata storage (Snippet.swift)
+- ✅ REQ-SM-005: Expiration filtering (SnippetStorage.swift)
+- ✅ REQ-SM-008: Type selection UI (ShareView.swift)
+- ✅ REQ-SM-004: Visual indicators in main app (ContentView.swift)
+- ✅ REQ-SM-013: Visual indicators in keyboard (KeyboardView.swift)
 
-**REQ-SM-005:** Hide Expired Timed Snippets
-- **Status:** No filtering logic in `loadSnippets()`
-- **Impact:** Expired timed snippets will still appear
-- **Work:** Add filter in `SnippetStorage.loadSnippets()` to remove expired items
-- **Estimate:** 15 minutes
-
-**REQ-SM-008:** Choose Snippet Type When Saving
-- **Status:** No UI for type selection in share extension
-- **Impact:** Users can't create timed snippets
-- **Work:** Add segmented picker to `ShareView`, update save handler
-- **Estimate:** 1 hour (UI + logic + testing)
-
-### High Priority (Visual Polish)
-
-**REQ-SM-004:** Distinguish Snippet Types Visually (Main App)
-- **Status:** No visual indicators in snippet list
-- **Impact:** Users can't tell regular from timed snippets
-- **Work:** Add clock icon and "Expires in X days" to `SnippetRow`
-- **Estimate:** 45 minutes
-
-**REQ-SM-013:** Show Snippet Type in Keyboard
-- **Status:** No visual indicators in keyboard
-- **Impact:** Users can't identify timed snippets while typing
-- **Work:** Add clock icon and "3d left" compact format to `SnippetButton`
-- **Estimate:** 45 minutes
+**Status:** Feature complete, ready for device testing
 
 ### Medium Priority (Known Limitations)
 
@@ -307,7 +284,7 @@ Expected: Within normal iOS keyboard switching time (~300ms)
 - [x] Main app displays snippets
 - [x] Share extension saves snippets
 - [x] Keyboard extension inserts snippets
-- [ ] Timed snippets feature complete (5 requirements remaining)
+- [x] Timed snippets feature complete (all 5 requirements implemented)
 - [x] Data persistence works
 - [x] Cross-component data sharing works
 
@@ -321,16 +298,16 @@ Expected: Within normal iOS keyboard switching time (~300ms)
 ### User Experience
 - [x] Empty state provides clear guidance
 - [x] Native iOS look and feel
-- [ ] Visual distinction for timed snippets (not yet implemented)
-- [ ] Intuitive snippet type selection (not yet implemented)
+- [x] Visual distinction for timed snippets (orange clock icon + expiration text)
+- [x] Intuitive snippet type selection (segmented picker with helper text)
 - [x] Dark mode support (verified in code)
 
 ## Conclusion
 
-**Current State:** Core functionality is complete and working. Main app, share extension, and keyboard extension all function correctly for regular snippets. Infrastructure for timed snippets exists but feature is incomplete.
+**Current State:** Feature complete! All core functionality is implemented including timed snippets. Main app, share extension, and keyboard extension all support both regular and timed snippets with full visual indicators and automatic expiration.
 
-**Remaining Work:** 5 requirements need implementation to complete timed snippets feature (estimated 4-5 hours). Configuration of App Group ID and code signing required before device testing (1-2 hours).
+**Remaining Work:** Configuration of App Group ID and code signing required before device testing (1-2 hours). Manual testing on physical device to verify all components work together correctly.
 
-**Confidence Level:** High for existing features. Medium for timed snippets (straightforward additions to working codebase). Low risk of surprises - most complexity is in iOS extension architecture which is already working.
+**Confidence Level:** High. All requirements are implemented with proper backwards compatibility. Data model supports both snippet types, expiration filtering works automatically, and visual indicators are consistent across all components.
 
-**Recommendation:** Proceed with timed snippets implementation following Phase 1 plan. Feature adds significant user value (auto-cleanup of transient content) with low implementation risk.
+**Recommendation:** Proceed with device configuration and testing. Feature is ready for production use once App Group ID and code signing are configured. All timed snippets functionality is complete and follows iOS best practices.

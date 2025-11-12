@@ -9,8 +9,15 @@ import SwiftUI
 
 struct ShareView: View {
     let text: String
-    let onSave: () -> Void
+    let onSave: (Bool) -> Void  // Takes isTimed parameter
     let onCancel: () -> Void
+
+    @State private var snippetType: SnippetType = .regular
+
+    enum SnippetType: String, CaseIterable {
+        case regular = "Regular"
+        case timed = "Timed"
+    }
 
     var body: some View {
         NavigationView {
@@ -18,6 +25,24 @@ struct ShareView: View {
                 Text("Save Snippet")
                     .font(.headline)
                     .padding(.top)
+
+                // REQ-SM-008: Snippet type selection
+                VStack(alignment: .leading, spacing: 8) {
+                    Picker("Type", selection: $snippetType) {
+                        ForEach(SnippetType.allCases, id: \.self) { type in
+                            Text(type.rawValue).tag(type)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+
+                    if snippetType == .timed {
+                        Text("Expires in 7 days")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal)
+                    }
+                }
 
                 ScrollView {
                     Text(text)
@@ -36,7 +61,7 @@ struct ShareView: View {
                     .frame(maxWidth: .infinity)
 
                     Button("Save") {
-                        onSave()
+                        onSave(snippetType == .timed)
                     }
                     .buttonStyle(.borderedProminent)
                     .frame(maxWidth: .infinity)
@@ -69,7 +94,7 @@ struct SavedConfirmationView: View {
 #Preview {
     ShareView(
         text: "This is some sample text that was shared from another app",
-        onSave: {},
+        onSave: { _ in },
         onCancel: {}
     )
 }

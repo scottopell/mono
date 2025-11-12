@@ -46,9 +46,20 @@ struct SnippetButton: View {
                     .lineLimit(2)
                     .foregroundColor(.primary)
                     .frame(maxWidth: 200, alignment: .leading)
-                Text(formattedDate)
+
+                // REQ-SM-013: Compact visual indicators for timed snippets
+                if snippet.isTimed, let expirationDate = snippet.expirationDate {
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock")
+                        Text(compactExpirationText(for: expirationDate))
+                    }
                     .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.orange)
+                } else {
+                    Text(formattedDate)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
             }
             .padding(8)
             .frame(width: 200)
@@ -70,6 +81,20 @@ struct SnippetButton: View {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
         return formatter.localizedString(for: snippet.timestamp, relativeTo: Date())
+    }
+
+    private func compactExpirationText(for expirationDate: Date) -> String {
+        let now = Date()
+        let timeInterval = expirationDate.timeIntervalSince(now)
+        let daysRemaining = Int(ceil(timeInterval / (24 * 60 * 60)))
+
+        if daysRemaining <= 0 {
+            return "expired"
+        } else if daysRemaining == 1 {
+            return "1d left"
+        } else {
+            return "\(daysRemaining)d left"
+        }
     }
 }
 
