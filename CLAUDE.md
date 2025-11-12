@@ -302,35 +302,24 @@ Document technical implementation details:
 
 ## Status Summary
 
-| Requirement | Backend | Frontend | Testing | Verification & Gaps |
-|-------------|---------|----------|---------|---------------------|
-| **REQ-[ABBREV]-001:** [Short Title] | ✅ | ✅ | ✅ E2E | E2E test simulates [scenario], verifies [outcome] |
-| **REQ-[ABBREV]-002:** [Short Title] | 🔄 | ❌ | ⏭️ | Manual procedure documented. Gap: No automated test |
-| **REQ-[ABBREV]-003:** [Short Title] | ✅ | N/A | ⚠️ Manual | Manual verification only (operational feature) |
-| **REQ-[ABBREV]-004:** [Short Title] | ❌ | ❌ | ❌ | Not implemented |
+| Requirement | Status | Notes |
+|-------------|--------|-------|
+| **REQ-[ABBREV]-001:** [Short Title] | ✅ Complete | Verified via [method] |
+| **REQ-[ABBREV]-002:** [Short Title] | 🔄 In Progress | [Component] implemented, [other component] pending |
+| **REQ-[ABBREV]-003:** [Short Title] | ⚠️ Manual Only | Manual verification documented |
+| **REQ-[ABBREV]-004:** [Short Title] | ❌ Not Started | Planned for next iteration |
 
 **Progress:** X of Y complete
-
-## Test Execution
-
-```bash
-# Project-specific test commands
-npm test                    # Run unit tests
-npm run test:e2e            # Run E2E tests
-pytest                      # Python projects
-cargo test                  # Rust projects
-xcodebuild test            # iOS projects
-```
 ````
 
 **Status Legend:**
-- ✅ Complete/Passing
-- 🔄 In Progress/Partial
-- ⏭️ Planned
-- ❌ Not Started/None
-- ⚠️ Manual verification only
-- 🟡 Functional (works but gaps exist)
-- N/A - Not applicable
+- ✅ Complete - Requirement fully implemented and verified
+- 🔄 In Progress - Implementation underway
+- ⏭️ Planned - Scheduled for future work
+- ❌ Not Started - No work begun
+- ⚠️ Manual Only - Requires manual verification
+- 🟡 Functional - Works but has known gaps
+- N/A - Not applicable to this project
 
 ## Workflow: Creating Specs for a New Project
 
@@ -357,39 +346,7 @@ Create design.md:
 
 Create executive.md with status table and summaries (all requirements marked as not started initially).
 
-### 4. Test Development Phase
-
-Write tests with requirement traceability:
-
-```typescript
-/**
- * @requirement REQ-SM-001
- * @acceptance-criteria Display all saved snippets
- */
-test.describe("Snippet List", () => {
-  /**
-   * @verifies REQ-SM-001: System displays snippets sorted newest first
-   */
-  test("should display snippets", async () => {
-    // Test implementation
-  });
-});
-```
-
-```swift
-// REQ-SM-001: View all saved snippets
-func testDisplaySnippets() {
-    // Test implementation
-}
-```
-
-```python
-# REQ-ABC-001: Process user input
-def test_process_user_input():
-    # Test implementation
-```
-
-### 5. Implementation Phase
+### 4. Implementation Phase
 
 Add requirement comments to code and document in design.md:
 
@@ -402,13 +359,13 @@ func loadSnippets() -> [Snippet] {
 
 Update design.md with implementation details per requirement (file locations, technical decisions).
 
-### 6. Validation Phase
+### 5. Validation Phase
 
 Update executive.md:
 
-- Change status table cells (❌ → 🔄 → ✅)
-- Add verification coverage sections
-- Document any coverage gaps
+- Change status as implementation progresses (❌ → 🔄 → ✅)
+- Document verification approach
+- Note any gaps or limitations
 - Keep requirements.md unchanged (it's timeless)
 
 ## Workflow: Updating Existing Specs
@@ -418,18 +375,16 @@ Update executive.md:
 1. Add new requirement to requirements.md with next sequential ID (no status field)
 2. Add row to executive.md status table (initially ❌)
 3. Update design.md with planned approach
-4. Write tests with `@requirement` tags or `REQ-*` comments
-5. Implement code with `REQ-*` comments
-6. Update executive.md with verification coverage
+4. Implement with `REQ-*` comments linking to requirements
+5. Update executive.md status and notes
 
 ### Modifying Requirements
 
 1. **NEVER change requirement IDs**
 2. Update EARS statements in requirements.md if behavior changes (git shows history)
 3. Update design.md implementation section
-4. Update affected tests
-5. Update executive.md verification coverage
-6. Add deprecation note if requirement becomes obsolete:
+4. Update executive.md status and notes
+5. Add deprecation note if requirement becomes obsolete:
 
    ```markdown
    ### REQ-[ABBREV]-003: [Old Requirement]
@@ -441,16 +396,13 @@ Update executive.md:
 
 ## Verification
 
-### Manual Verification
+### Traceability
 
 Check traceability with ripgrep within a project:
 
 ```bash
 # From project root, find all references to a requirement
 rg "REQ-SM-001"
-
-# Find all requirement IDs in tests
-rg "@requirement REQ-" tests/
 
 # Find all requirement comments in code
 rg "// REQ-" src/
@@ -476,9 +428,9 @@ Before committing requirements.md, run this checklist on EACH requirement:
 - [ ] No "HOW" in requirements (that belongs in design.md)
 - [ ] No code-like language or jargon
 
-**Testability Check:**
+**Verifiability Check:**
 
-- [ ] Observable behavior that can be verified without reading code
+- [ ] Observable behavior that can be verified
 - [ ] Specific criteria (numbers, states, messages) not vague terms
 - [ ] Clear success/failure conditions
 
@@ -500,14 +452,12 @@ Before committing requirements.md, run this checklist on EACH requirement:
 
 ### DO:
 
-- Write requirements before tests
-- Write tests before implementation
+- Write requirements before implementation
 - Use specific, measurable criteria in EARS statements
-- Link every requirement to at least one test
+- Link code to requirements with `REQ-*` comments
 - Keep requirement IDs immutable
 - Update executive.md as implementation progresses
-- Review test coverage in code reviews
-- Keep executive.md concise (2-3 sentences per requirement, no code)
+- Keep executive.md concise (no code snippets)
 - Use git history for evolution tracking (no "Updated YYYY-MM-DD" notes)
 - Apply YAGNI: Only create specs when they provide clear value
 - Apply KISS: Keep specs simple and focused
@@ -515,14 +465,13 @@ Before committing requirements.md, run this checklist on EACH requirement:
 ### DON'T:
 
 - Write vague requirements ("fast", "good UX")
-- Skip writing tests for requirements
 - Reuse requirement IDs
 - Add status fields to requirements.md (use executive.md for status)
 - Document aspirational features in requirements.md
 - Create specs for trivial projects or changes
 - Let specs become stale
 - Include code snippets in executive.md (zero tolerance)
-- Add fluff to executive.md ("tests run on every PR", etc.)
+- Add fluff to executive.md
 - Over-engineer: Specs are a tool, not a religion
 
 ## Integration with Project Planning
