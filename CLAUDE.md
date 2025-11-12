@@ -2,13 +2,33 @@
 
 ## Overview
 
-This project uses a requirements-based planning system inspired by EARS (Easy Approach to Requirements Syntax) to maintain traceability from requirements → tests → code.
+This mono repo uses a requirements-based planning system inspired by EARS (Easy Approach to Requirements Syntax) to maintain traceability from requirements → tests → code.
+
+Each project in this mono repo can maintain its own specs when appropriate. All projects strictly adhere to **YAGNI** (You Aren't Gonna Need It) and **KISS** (Keep It Simple, Stupid) principles.
 
 ## When to Create Specs
 
-Create a new spec directory when:
+### For New Projects
 
-- Starting a new feature that involves multiple components (API + Frontend + Storage)
+Create a `specs/` directory within a project when:
+
+- Starting a new project with multiple non-trivial features
+- Building something with clear acceptance criteria and testable behavior
+- Implementing complex logic that needs comprehensive testing
+- Working on projects that will evolve over time with multiple features
+
+**Do NOT create specs for:**
+
+- Simple utility scripts or tools (like pdf_to_jpegs)
+- One-off automation scripts
+- Trivial projects with < 3 meaningful features
+- Projects that can be fully understood by reading the README
+
+### For Features Within Existing Projects
+
+Create a new spec subdirectory (e.g., `ProjectName/specs/feature-name/`) when:
+
+- Adding a feature that involves multiple components
 - Adding functionality that requires clear acceptance criteria
 - Implementing complex business logic that needs comprehensive testing
 - Working on features that will evolve over time
@@ -22,20 +42,43 @@ Create a new spec directory when:
 
 ## File Structure
 
+### Project-Level Specs
+
 ```
-specs/
-  feature-name/
-    requirements.md   # EARS-formatted requirements with immutable IDs (timeless, no status)
-    design.md         # Technical architecture and implementation notes (living document)
-    executive.md      # Status tracking and executive summaries (authoritative status source)
+ProjectName/
+├── specs/
+│   ├── requirements.md   # For simple projects: single requirements file
+│   ├── design.md         # Technical architecture (living document)
+│   └── executive.md      # Status tracking (authoritative status source)
+├── src/
+└── README.md
 ```
+
+### Multi-Feature Project Specs
+
+```
+ProjectName/
+├── specs/
+│   ├── feature-one/
+│   │   ├── requirements.md   # EARS-formatted requirements (timeless, no status)
+│   │   ├── design.md         # Technical architecture (living document)
+│   │   └── executive.md      # Status tracking (authoritative status source)
+│   └── feature-two/
+│       ├── requirements.md
+│       ├── design.md
+│       └── executive.md
+├── src/
+└── README.md
+```
+
+**Note:** For projects with unified functionality (like SnippetManager), use project-level specs. Only create feature subdirectories if the project grows to have distinctly separate feature areas.
 
 ## Requirements Document Format (requirements.md)
 
 ### Template Structure
 
 ```markdown
-# [Feature Name]
+# [Project/Feature Name]
 
 ## User Story
 
@@ -43,7 +86,7 @@ As a [user type], I need to [capability] so that [benefit].
 
 ## Requirements
 
-### REQ-[FEATURE]-001: [User Benefit Title]
+### REQ-[ABBREV]-001: [User Benefit Title]
 
 WHEN [trigger condition or user action]
 THE SYSTEM SHALL [expected behavior]
@@ -53,11 +96,11 @@ THE SYSTEM SHALL [error handling behavior]
 
 **Rationale:** [Why does the USER care? What user problem does this solve?]
 
-**Dependencies:** REQ-[FEATURE]-002 (if applicable)
+**Dependencies:** REQ-[ABBREV]-002 (if applicable)
 
 ---
 
-### REQ-[FEATURE]-002: [Next Requirement Title]
+### REQ-[ABBREV]-002: [Next Requirement Title]
 
 WHEN [condition]
 THE SYSTEM SHALL [behavior]
@@ -163,17 +206,17 @@ Why good: Focuses on user experience (fluid exploration), mentions performance t
 
 ### Requirement ID Format
 
-Use immutable IDs: `REQ-[FEATURE]-###`
+Use immutable IDs: `REQ-[ABBREV]-###`
 
-- **[FEATURE]**: Short abbreviation (e.g., RL for Rate Limiting, CC for Current Conditions)
+- **[ABBREV]**: Short abbreviation for project or feature (e.g., SM for SnippetManager, RL for Rate Limiting)
 - **###**: Zero-padded sequential number (001, 002, etc.)
 - **Once assigned, IDs are NEVER reused or changed**
 
 Examples:
 
-- `REQ-RL-001` - Rate Limiting requirement #1
-- `REQ-CC-003` - Current Conditions requirement #3
-- `REQ-QV-012` - Quota Visibility requirement #12
+- `REQ-SM-001` - SnippetManager requirement #1
+- `REQ-SM-015` - SnippetManager requirement #15
+- `REQ-RL-001` - Rate Limiting feature requirement #1
 
 ### Requirement Titles
 
@@ -182,17 +225,17 @@ Requirement titles SHALL describe USER BENEFITS or OUTCOMES, not system features
 **Good Examples (User Benefit Focused):**
 
 ```markdown
-✅ REQ-NM-001: Discover Recent Weather Activity in a Region
-✅ REQ-RL-001: Prevent Token Farming Attacks
-✅ REQ-CC-001: Show Current Conditions Without Waiting
+✅ REQ-SM-001: View All Saved Snippets
+✅ REQ-SM-006: Access Save Function from Any App
+✅ REQ-SM-014: Insert Snippet Text
 ```
 
 **Bad Examples (Implementation Focused):**
 
 ```markdown
-❌ REQ-NM-001: Viewport-Based Nowcast Query
-❌ REQ-RL-001: IP-Based Token Rate Limiting
-❌ REQ-CC-001: Cache Current Conditions Data
+❌ REQ-SM-001: Display List View with UserDefaults Data
+❌ REQ-SM-006: Implement Share Extension
+❌ REQ-SM-014: Use textDocumentProxy.insertText()
 ```
 
 **Test:** Ask "Would a non-technical user understand what benefit this provides?" If no, rewrite.
@@ -202,7 +245,7 @@ Requirement titles SHALL describe USER BENEFITS or OUTCOMES, not system features
 Document technical implementation details:
 
 ```markdown
-# [Feature Name] - Technical Design
+# [Project/Feature Name] - Technical Design
 
 ## Architecture Overview
 
@@ -210,11 +253,7 @@ Document technical implementation details:
 
 ## Data Models
 
-[TypeScript interfaces, Rust structs, database schemas]
-
-## API Endpoints
-
-[Endpoint specifications with request/response formats]
+[Structs, classes, database schemas, data formats]
 
 ## Component Interactions
 
@@ -226,15 +265,15 @@ Document technical implementation details:
 
 ## Testing Strategy
 
-[Unit tests with mocks, E2E tests with full stack including Redis]
+[Unit tests, integration tests, manual testing procedures]
 
 ## Security Considerations
 
-[Authentication, authorization, data validation]
+[Authentication, authorization, data validation, privacy]
 
 ## Performance Considerations
 
-[Caching, rate limiting, optimization strategies]
+[Caching, optimization strategies, performance targets]
 ```
 
 ## Executive Document Format (executive.md)
@@ -251,7 +290,7 @@ Document technical implementation details:
 - Requirement titles in table (no need to look up IDs)
 
 ````markdown
-# [Feature Name] - Executive Summary
+# [Project/Feature Name] - Executive Summary
 
 ## Requirements Summary
 
@@ -259,14 +298,14 @@ Document technical implementation details:
 
 ## Technical Summary
 
-[250 words max, architecture-focused: How is it built? Key technical decisions? Data flow? API design?]
+[250 words max, architecture-focused: How is it built? Key technical decisions? Data flow? Design patterns?]
 
 ## Status Summary
 
 | Requirement | Backend | Frontend | Testing | Verification & Gaps |
 |-------------|---------|----------|---------|---------------------|
-| **REQ-[ABBREV]-001:** [Short Title] | ✅ | ✅ | ✅ E2E | E2E test simulates [scenario], verifies [outcome] (`test.spec.ts`) |
-| **REQ-[ABBREV]-002:** [Short Title] | 🔄 | ❌ | ⏭️ | Manual procedure in OPERATIONS.md. Gap: No automated test |
+| **REQ-[ABBREV]-001:** [Short Title] | ✅ | ✅ | ✅ E2E | E2E test simulates [scenario], verifies [outcome] |
+| **REQ-[ABBREV]-002:** [Short Title] | 🔄 | ❌ | ⏭️ | Manual procedure documented. Gap: No automated test |
 | **REQ-[ABBREV]-003:** [Short Title] | ✅ | N/A | ⚠️ Manual | Manual verification only (operational feature) |
 | **REQ-[ABBREV]-004:** [Short Title] | ❌ | ❌ | ❌ | Not implemented |
 
@@ -275,7 +314,12 @@ Document technical implementation details:
 ## Test Execution
 
 ```bash
-./dev.py test e2e --spec feature.spec.ts
+# Project-specific test commands
+npm test                    # Run unit tests
+npm run test:e2e            # Run E2E tests
+pytest                      # Python projects
+cargo test                  # Rust projects
+xcodebuild test            # iOS projects
 ```
 ````
 
@@ -288,14 +332,15 @@ Document technical implementation details:
 - 🟡 Functional (works but gaps exist)
 - N/A - Not applicable
 
-## Workflow: Creating a New Feature
+## Workflow: Creating Specs for a New Project
 
 ### 1. Planning Phase
 
-Create spec directory and write requirements.md:
+Create project and specs directory:
 
 ```bash
-mkdir -p specs/feature-name
+mkdir -p ProjectName/specs
+cd ProjectName/specs
 # Write requirements.md with EARS-formatted requirements (no status fields)
 ```
 
@@ -305,7 +350,7 @@ Create design.md:
 
 - Document architecture decisions
 - Define data models
-- Specify API contracts
+- Specify component interactions
 - Plan implementation approach per requirement
 
 ### 3. Executive Summary Phase
@@ -314,41 +359,43 @@ Create executive.md with status table and summaries (all requirements marked as 
 
 ### 4. Test Development Phase
 
-Write tests:
+Write tests with requirement traceability:
 
 ```typescript
 /**
- * @requirement REQ-[FEATURE]-001
- * @acceptance-criteria Rate limiting enforcement
+ * @requirement REQ-SM-001
+ * @acceptance-criteria Display all saved snippets
  */
-test.describe("Feature Name", () => {
+test.describe("Snippet List", () => {
   /**
-   * @verifies REQ-[FEATURE]-001: System returns 429 after limit
+   * @verifies REQ-SM-001: System displays snippets sorted newest first
    */
-  test("should enforce rate limit", async ({ request }) => {
+  test("should display snippets", async () => {
     // Test implementation
   });
 });
 ```
 
-```rust
-// REQ-[FEATURE]-001: Rate limiting implementation
-#[tokio::test]
-async fn test_rate_limit_enforcement() -> Result<()> {
+```swift
+// REQ-SM-001: View all saved snippets
+func testDisplaySnippets() {
     // Test implementation
 }
+```
+
+```python
+# REQ-ABC-001: Process user input
+def test_process_user_input():
+    # Test implementation
 ```
 
 ### 5. Implementation Phase
 
 Add requirement comments to code and document in design.md:
 
-```rust
-// REQ-[FEATURE]-001: Token rate limiting
-pub async fn check_rate_limit(
-    ip_addr: &str,
-    limiter: &RateLimiter,
-) -> Result<RateLimitInfo> {
+```swift
+// REQ-SM-001: Display snippets sorted by timestamp
+func loadSnippets() -> [Snippet] {
     // Implementation
 }
 ```
@@ -364,14 +411,14 @@ Update executive.md:
 - Document any coverage gaps
 - Keep requirements.md unchanged (it's timeless)
 
-## Workflow: Updating Existing Features
+## Workflow: Updating Existing Specs
 
 ### Adding Requirements
 
 1. Add new requirement to requirements.md with next sequential ID (no status field)
 2. Add row to executive.md status table (initially ❌)
 3. Update design.md with planned approach
-4. Write tests with `@requirement` tags
+4. Write tests with `@requirement` tags or `REQ-*` comments
 5. Implement code with `REQ-*` comments
 6. Update executive.md with verification coverage
 
@@ -385,9 +432,9 @@ Update executive.md:
 6. Add deprecation note if requirement becomes obsolete:
 
    ```markdown
-   ### REQ-[FEATURE]-003: [Old Requirement]
+   ### REQ-[ABBREV]-003: [Old Requirement]
 
-   **DEPRECATED:** Replaced by REQ-[FEATURE]-007
+   **DEPRECATED:** Replaced by REQ-[ABBREV]-007
 
    [Original EARS statements preserved]
    ```
@@ -396,26 +443,18 @@ Update executive.md:
 
 ### Manual Verification
 
-Check traceability with grep:
+Check traceability with ripgrep within a project:
 
 ```bash
-# Find all references to a requirement
-rg "REQ-RL-001"
+# From project root, find all references to a requirement
+rg "REQ-SM-001"
 
 # Find all requirement IDs in tests
-rg "@requirement REQ-" frontend/tests/
+rg "@requirement REQ-" tests/
 
 # Find all requirement comments in code
 rg "// REQ-" src/
-```
-
-### Automated Verification (Future)
-
-```bash
-# ./dev.py verify-requirements
-# - Scans for REQ-* tags in code and tests
-# - Validates all requirements have test coverage
-# - Reports missing links
+rg "# REQ-" src/
 ```
 
 ### Requirements Self-Check Before Committing
@@ -452,10 +491,10 @@ Before committing requirements.md, run this checklist on EACH requirement:
 
 **Green Flags - Good signs:**
 
-- Requirement title starts with verb describing user action (Discover, Show, Enable)
-- WHEN clause starts with "When a user..." or "When exploring..."
+- Requirement title starts with verb describing user action (View, Access, Insert, Enable)
+- WHEN clause starts with "When a user..." or "When user..."
 - SHALL clause describes what user sees/experiences
-- Rationale uses words like: curiosity, discover, explore, understand, feel
+- Rationale uses words like: discover, explore, understand, feel, trust, verify
 
 ## Best Practices
 
@@ -470,6 +509,8 @@ Before committing requirements.md, run this checklist on EACH requirement:
 - Review test coverage in code reviews
 - Keep executive.md concise (2-3 sentences per requirement, no code)
 - Use git history for evolution tracking (no "Updated YYYY-MM-DD" notes)
+- Apply YAGNI: Only create specs when they provide clear value
+- Apply KISS: Keep specs simple and focused
 
 ### DON'T:
 
@@ -477,18 +518,19 @@ Before committing requirements.md, run this checklist on EACH requirement:
 - Skip writing tests for requirements
 - Reuse requirement IDs
 - Add status fields to requirements.md (use executive.md for status)
-- Document aspirational features in requirements.md (use PLAN.md for future work)
-- Create specs for trivial changes
+- Document aspirational features in requirements.md
+- Create specs for trivial projects or changes
 - Let specs become stale
 - Include code snippets in executive.md (zero tolerance)
 - Add fluff to executive.md ("tests run on every PR", etc.)
+- Over-engineer: Specs are a tool, not a religion
 
-## Integration with Existing Workflow
+## Integration with Project Planning
 
-### PLAN.md vs specs/
+### Project README vs specs/
 
-- **PLAN.md**: High-level roadmap, future features, aspirational goals
-- **specs/**: Detailed requirements for features being actively developed or already implemented
+- **README.md**: Project overview, setup instructions, usage examples, quick start
+- **specs/**: Detailed requirements for non-trivial projects being actively developed or already implemented
   - **requirements.md**: Timeless requirements (no status)
   - **design.md**: Living technical documentation
   - **executive.md**: Authoritative status tracking (single source of truth)
@@ -498,24 +540,25 @@ Before committing requirements.md, run this checklist on EACH requirement:
 Commit messages should reference requirement IDs:
 
 ```
-Implement token rate limiting (REQ-RL-001)
+Implement snippet saving (REQ-SM-009)
 
-- Add IP-based rate limiting middleware
-- Return 429 with rate limit headers
-- Add comprehensive test coverage
+- Save snippet with type and timestamp
+- Display confirmation message
+- Auto-dismiss after 1 second
 
-Implements: REQ-RL-001, REQ-RL-002
-Tests: frontend/tests/e2e/specs/rate-limiting.spec.ts
+Implements: REQ-SM-008, REQ-SM-009
 ```
 
 ## Examples
 
-See `specs/newspaper/` for a complete example of this system in practice:
+See `SnippetManager/specs/` for a complete example of this system in practice:
 
 - `requirements.md` - Pure EARS requirements with rationale (no status)
 - `design.md` - Technical architecture and implementation details
-- `executive.md` - Status tracking with executive summaries (~100 lines total)
+- `executive.md` - Status tracking with executive summaries
 
-## Questions?
-
-Refer to REQ_BASED_PLANNING.md for detailed explanation of the strategy and rationale.
+This is a real iOS project with 24 requirements demonstrating:
+- User-focused requirement titles
+- Clear EARS format with testable conditions
+- Separation of concerns (requirements vs design vs status)
+- Immutable requirement IDs (REQ-SM-001 through REQ-SM-024)
