@@ -8,7 +8,6 @@ use crate::types::{Position, GamePhase, TileType};
 
 /// Serializable tile data for JavaScript
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[wasm_bindgen]
 pub struct JsTile {
     pub id: u32,
     pub x: i32,
@@ -19,7 +18,6 @@ pub struct JsTile {
 
 /// Serializable hazard position
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[wasm_bindgen]
 pub struct JsHazard {
     pub x: i32,
     pub y: i32,
@@ -27,14 +25,12 @@ pub struct JsHazard {
 
 /// Serializable card for JavaScript
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[wasm_bindgen]
 pub struct JsCard {
     pub tile_type: String,
 }
 
 /// Game state for JavaScript consumption
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[wasm_bindgen]
 pub struct JsGameState {
     pub turn: u32,
     pub phase: String,
@@ -48,7 +44,6 @@ pub struct JsGameState {
 
 /// Serializable placement result
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[wasm_bindgen]
 pub struct JsPlacementResult {
     pub success: bool,
     pub message: String,
