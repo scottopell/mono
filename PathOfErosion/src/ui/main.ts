@@ -8,23 +8,61 @@ class GameUI {
     private canvas: HTMLCanvasElement;
     private ctx: CanvasRenderingContext2D;
     private game: any;
-    private tileSize: number = 40;
+    private tileSize: number = 50;
     private offsetX: number = 0;
     private offsetY: number = 0;
+    private boardCenterX: number = 10;
+    private boardCenterY: number = 10;
 
     constructor() {
+        console.log('GameUI constructor called');
         this.canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
+        console.log('Canvas element:', this.canvas);
         this.ctx = this.canvas.getContext('2d')!;
 
-        // Wait for WASM to load
+        // Set canvas resolution immediately and on resize
+        this.resizeCanvas();
+        window.addEventListener('resize', () => this.resizeCanvas());
+
+        // Initialize game
         this.initGame();
         this.setupEventListeners();
     }
 
-    private initGame() {
-        // Use mock client for now (will be replaced by WASM)
-        this.game = new MockGameClient(20, 20, Date.now());
-        console.log('Game initialized with mock client');
+    private resizeCanvas() {
+        const rect = this.canvas.getBoundingClientRect();
+        console.log('Resizing canvas:', rect.width, 'x', rect.height);
+
+        // Set canvas internal resolution (not scaled by DPR - keep it simple)
+        this.canvas.width = rect.width;
+        this.canvas.height = rect.height;
+
+        // Center the grid on the canvas
+        this.offsetX = this.canvas.width / 2 - (this.boardCenterX * this.tileSize);
+        this.offsetY = this.canvas.height / 2 - (this.boardCenterY * this.tileSize);
+
+        console.log('Canvas internal size:', this.canvas.width, 'x', this.canvas.height);
+        console.log('Grid offset:', this.offsetX, this.offsetY);
+
+        if (this.game) {
+            this.render();
+        }
+    }
+
+    private async initGame() {
+        try {
+            // Try to load WASM
+            const wasm = await import('./pkg/tile_game.js');
+            await wasm.default();
+            GameWrapper = wasm.GameWrapper;
+            this.game = new GameWrapper(20, 20, BigInt(Date.now()));
+            console.log('Game initialized with WASM');
+        } catch (e) {
+            // Fall back to mock client
+            console.warn('WASM failed to load, using mock client:', e);
+            this.game = new MockGameClient(20, 20, Date.now());
+            console.log('Game initialized with mock client');
+        }
         this.render();
     }
 
@@ -55,14 +93,35 @@ class GameUI {
         if (!this.game) return;
 
         try {
-            const state = this.game.getState();
+            // Get state - WASM returns Result, mock returns direct object
+            let state: GameState;
+            if (this.game.get_state) {
+                // WASM API
+                state = this.game.get_state();
+            } else {
+                // Mock API
+                state = this.game.getState();
+            }
+
             const phase = state.phase;
 
             let result: PlacementResult;
             if (phase === 'PLACING_FORCED_CARD') {
-                result = this.game.placeForcedCard(x, y);
+                if (this.game.place_forced_card) {
+                    // WASM API
+                    result = this.game.place_forced_card(x, y);
+                } else {
+                    // Mock API
+                    result = this.game.placeForcedCard(x, y);
+                }
             } else if (phase === 'PLACING_OPTIONAL_CARD') {
-                result = this.game.placeOptionalCard(x, y);
+                if (this.game.place_optional_card) {
+                    // WASM API
+                    result = this.game.place_optional_card(x, y);
+                } else {
+                    // Mock API
+                    result = this.game.placeOptionalCard(x, y);
+                }
             } else {
                 return;
             }
@@ -78,7 +137,13 @@ class GameUI {
         if (!this.game) return;
 
         try {
-            this.game.skipOptionalCard();
+            if (this.game.skip_optional_card) {
+                // WASM API
+                this.game.skip_optional_card();
+            } else {
+                // Mock API
+                this.game.skipOptionalCard();
+            }
             console.log('Skipped optional card');
             this.render();
         } catch (e) {
@@ -90,7 +155,15 @@ class GameUI {
         if (!this.game) return;
 
         try {
-            const state = this.game.getState();
+            // Get state - WASM returns Result, mock returns direct object
+            let state: GameState;
+            if (this.game.get_state) {
+                // WASM API
+                state = this.game.get_state();
+            } else {
+                // Mock API
+                state = this.game.getState();
+            }
             this.renderGame(state);
             this.updateUI(state);
         } catch (e) {
