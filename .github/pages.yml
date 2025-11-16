@@ -1,0 +1,18 @@
+# GitHub Pages deployment configuration
+# Add new projects here - no need to modify the workflow
+
+# Optional: root index page settings
+index:
+  title: "My Projects"
+  description: "Collection of web applications"
+
+# List of static sites to deploy
+sites:
+  - name: coffee-timer
+    path: coffee-timer
+    description: "Pour over coffee timer"
+
+  # Add more static sites here:
+  # - name: another-app
+  #   path: another-app
+  #   description: "Description of another app"

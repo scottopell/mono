@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Pour Over Coffee Timer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- REQ-CT-001: Recipe Selection Screen -->
+        <div id="recipe-selection" class="screen">
+            <h1>Select Recipe</h1>
+            <div class="recipe-buttons">
+                <button id="btn-single" class="recipe-btn">
+                    <div class="recipe-name">Single Portion</div>
+                    <div class="recipe-details">25g coffee / 350g water</div>
+                </button>
+                <button id="btn-double" class="recipe-btn selected">
+                    <div class="recipe-name">Double Portion</div>
+                    <div class="recipe-details">50g coffee / 700g water</div>
+                </button>
+            </div>
+            <button id="btn-start-brew" class="primary-btn">Start Brew</button>
+        </div>
+
+        <!-- REQ-CT-003: Bloom Phase Screen -->
+        <div id="bloom-phase" class="screen hidden">
+            <h1>Bloom Phase</h1>
+            <div id="bloom-instruction" class="instruction">Pour 100g to bloom grounds</div>
+            <div id="bloom-timer" class="timer">1:00</div>
+            <div class="phase-label">Wait for bloom...</div>
+        </div>
+
+        <!-- REQ-CT-004, REQ-CT-005: First Pour Screen -->
+        <div id="first-pour-phase" class="screen hidden">
+            <h1>First Pour</h1>
+            <div id="first-pour-instruction" class="instruction">Pour 300g - First Pour</div>
+            <div id="first-pour-timer" class="timer">0:00</div>
+            <button id="btn-first-pour-complete" class="primary-btn">Pour Complete</button>
+        </div>
+
+        <!-- REQ-CT-006, REQ-CT-005: Second Pour Screen -->
+        <div id="second-pour-phase" class="screen hidden">
+            <h1>Final Pour</h1>
+            <div id="second-pour-instruction" class="instruction">Pour 300g - Final Pour</div>
+            <div id="second-pour-timer" class="timer">0:00</div>
+            <button id="btn-second-pour-complete" class="primary-btn">Pour Complete</button>
+        </div>
+
+        <!-- REQ-CT-010: Completion Screen -->
+        <div id="brew-complete" class="screen hidden">
+            <h1>Brew Complete!</h1>
+            <div class="completion-message">Enjoy your coffee ☕</div>
+            <button id="btn-new-brew" class="primary-btn">Start New Brew</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
