@@ -24,102 +24,119 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      - name: Install yq
-        uses: mikefarah/yq@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install PyYAML
+        run: pip install PyYAML
 
       - name: Copy static sites
         run: |
-          set -e
-          mkdir -p _site
+          python3 << 'PYTHON_SCRIPT'
+          import yaml
+          import os
+          import shutil
 
-          CONFIG_FILE=".github/pages.yml"
+          with open('.github/pages.yml', 'r') as f:
+              config = yaml.safe_load(f)
 
-          # Read and process each site from config
-          SITE_COUNT=$(yq eval '.sites | length' "$CONFIG_FILE")
+          os.makedirs('_site', exist_ok=True)
 
-          echo "Found $SITE_COUNT sites to deploy"
+          sites = config.get('sites', [])
+          print(f"Found {len(sites)} sites to deploy")
 
-          for i in $(seq 0 $(($SITE_COUNT - 1))); do
-            NAME=$(yq eval ".sites[$i].name" "$CONFIG_FILE")
-            PATH=$(yq eval ".sites[$i].path" "$CONFIG_FILE")
-            DESC=$(yq eval ".sites[$i].description" "$CONFIG_FILE")
+          for site in sites:
+              name = site['name']
+              path = site['path']
+              desc = site.get('description', '')
 
-            echo "Processing: $NAME"
+              print(f"Processing: {name}")
 
-            if [ ! -d "$PATH" ]; then
-              echo "Warning: $PATH not found, skipping"
-              continue
-            fi
+              if not os.path.isdir(path):
+                  print(f"Warning: {path} not found, skipping")
+                  continue
 
-            # Copy static files
-            cp -r "$PATH" "_site/$NAME"
-            echo "✓ Copied static site: $NAME"
-          done
+              # Copy static files
+              dest = f"_site/{name}"
+              if os.path.exists(dest):
+                  shutil.rmtree(dest)
+              shutil.copytree(path, dest)
+              print(f"✓ Copied static site: {name}")
+          PYTHON_SCRIPT
 
       - name: Generate index page
         run: |
-          CONFIG_FILE=".github/pages.yml"
+          python3 << 'PYTHON_SCRIPT'
+          import yaml
+          import os
 
-          TITLE=$(yq eval '.index.title // "My Projects"' "$CONFIG_FILE")
-          DESCRIPTION=$(yq eval '.index.description // ""' "$CONFIG_FILE")
-          SITE_COUNT=$(yq eval '.sites | length' "$CONFIG_FILE")
+          with open('.github/pages.yml', 'r') as f:
+              config = yaml.safe_load(f)
 
-          cat > _site/index.html << EOF
-          <!DOCTYPE html>
+          title = config.get('index', {}).get('title', 'My Projects')
+          description = config.get('index', {}).get('description', '')
+          sites = config.get('sites', [])
+          repo_name = os.environ.get('REPO_NAME', '')
+
+          html = f'''<!DOCTYPE html>
           <html lang="en">
           <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>$TITLE</title>
+            <title>{title}</title>
             <style>
-              body {
+              body {{
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
                 max-width: 800px;
                 margin: 50px auto;
                 padding: 20px;
                 line-height: 1.6;
-              }
-              h1 { color: #333; }
-              .description { color: #666; margin-bottom: 30px; }
-              .projects { list-style: none; padding: 0; }
-              .projects li {
+              }}
+              h1 {{ color: #333; }}
+              .description {{ color: #666; margin-bottom: 30px; }}
+              .projects {{ list-style: none; padding: 0; }}
+              .projects li {{
                 margin: 15px 0;
                 padding: 15px;
                 border: 1px solid #ddd;
                 border-radius: 5px;
-              }
-              .projects a {
+              }}
+              .projects a {{
                 font-size: 1.2em;
                 color: #0366d6;
                 text-decoration: none;
-              }
-              .projects a:hover { text-decoration: underline; }
-              .project-desc { color: #666; margin-top: 5px; }
+              }}
+              .projects a:hover {{ text-decoration: underline; }}
+              .project-desc {{ color: #666; margin-top: 5px; }}
             </style>
           </head>
           <body>
-            <h1>$TITLE</h1>
-            <p class="description">$DESCRIPTION</p>
+            <h1>{title}</h1>
+            <p class="description">{description}</p>
             <ul class="projects">
-          EOF
+          '''
 
-          for i in $(seq 0 $(($SITE_COUNT - 1))); do
-            NAME=$(yq eval ".sites[$i].name" "$CONFIG_FILE")
-            DESC=$(yq eval ".sites[$i].description" "$CONFIG_FILE")
-
-            cat >> _site/index.html << EOF
-              <li>
-                <a href="/$REPO_NAME/$NAME/">$NAME</a>
-                <div class="project-desc">$DESC</div>
+          for site in sites:
+              name = site['name']
+              desc = site.get('description', '')
+              html += f'''      <li>
+                <a href="/{repo_name}/{name}/">{name}</a>
+                <div class="project-desc">{desc}</div>
               </li>
-          EOF
-          done
+          '''
 
-          cat >> _site/index.html << EOF
-            </ul>
+          html += '''    </ul>
           </body>
           </html>
-          EOF
+          '''
+
+          with open('_site/index.html', 'w') as f:
+              f.write(html)
+
+          print("✓ Generated index page")
+          PYTHON_SCRIPT
         env:
           REPO_NAME: ${{ github.event.repository.name }}
 
