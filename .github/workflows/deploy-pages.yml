@@ -79,6 +79,12 @@ jobs:
           description = config.get('index', {}).get('description', '')
           sites = config.get('sites', [])
           repo_name = os.environ.get('REPO_NAME', '')
+          repo_url = os.environ.get('REPO_URL', '')
+
+          # GitHub icon SVG
+          github_icon = '''<svg class="github-icon" viewBox="0 0 16 16" width="20" height="20" aria-hidden="true">
+            <path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
+          </svg>'''
 
           html = f'''<!DOCTYPE html>
           <html lang="en">
@@ -94,7 +100,32 @@ jobs:
                 padding: 20px;
                 line-height: 1.6;
               }}
-              h1 {{ color: #333; }}
+              .header {{
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 10px;
+              }}
+              h1 {{
+                color: #333;
+                margin: 0;
+              }}
+              .repo-link {{
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                color: #586069;
+                text-decoration: none;
+                padding: 5px 10px;
+                border-radius: 5px;
+                transition: background-color 0.2s;
+              }}
+              .repo-link:hover {{
+                background-color: #f6f8fa;
+              }}
+              .github-icon {{
+                vertical-align: middle;
+              }}
               .description {{ color: #666; margin-bottom: 30px; }}
               .projects {{ list-style: none; padding: 0; }}
               .projects li {{
@@ -103,26 +134,61 @@ jobs:
                 border: 1px solid #ddd;
                 border-radius: 5px;
               }}
-              .projects a {{
+              .project-header {{
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 5px;
+              }}
+              .project-link {{
                 font-size: 1.2em;
                 color: #0366d6;
                 text-decoration: none;
               }}
-              .projects a:hover {{ text-decoration: underline; }}
-              .project-desc {{ color: #666; margin-top: 5px; }}
+              .project-link:hover {{ text-decoration: underline; }}
+              .project-github {{
+                display: inline-flex;
+                align-items: center;
+                gap: 3px;
+                color: #586069;
+                text-decoration: none;
+                font-size: 0.9em;
+                padding: 3px 8px;
+                border-radius: 3px;
+                transition: background-color 0.2s;
+              }}
+              .project-github:hover {{
+                background-color: #f6f8fa;
+              }}
+              .project-desc {{ color: #666; }}
             </style>
           </head>
           <body>
-            <h1>{title}</h1>
+            <div class="header">
+              <h1>{title}</h1>
+              <a href="{repo_url}" class="repo-link" target="_blank" rel="noopener">
+                {github_icon}
+                <span>View Repository</span>
+              </a>
+            </div>
             <p class="description">{description}</p>
             <ul class="projects">
           '''
 
           for site in sites:
               name = site['name']
+              path = site['path']
               desc = site.get('description', '')
+              source_url = f"{repo_url}/tree/main/{path}"
+
               html += f'''      <li>
-                <a href="/{repo_name}/{name}/">{name}</a>
+                <div class="project-header">
+                  <a href="/{repo_name}/{name}/" class="project-link">{name}</a>
+                  <a href="{source_url}" class="project-github" target="_blank" rel="noopener">
+                    {github_icon}
+                    <span>Source</span>
+                  </a>
+                </div>
                 <div class="project-desc">{desc}</div>
               </li>
           '''
@@ -139,6 +205,7 @@ jobs:
           PYTHON_SCRIPT
         env:
           REPO_NAME: ${{ github.event.repository.name }}
+          REPO_URL: ${{ github.event.repository.html_url }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
