@@ -9,7 +9,7 @@ index:
 # List of static sites to deploy
 sites:
   - name: coffee-timer
-    path: coffee-timer
+    path: CoffeeTimer
     description: "Pour over coffee timer"
 
   # Add more static sites here:
