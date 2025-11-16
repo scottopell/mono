@@ -40,9 +40,12 @@ WHEN the bloom phase begins
 THE SYSTEM SHALL count down from 60 seconds to 0 seconds
 
 WHEN the bloom countdown reaches 0 seconds
-THE SYSTEM SHALL advance to the first pour phase automatically
+THE SYSTEM SHALL display a "Start First Pour" button and wait for user confirmation
 
-**Rationale:** The bloom phase is time-based (always 1 minute). Users can walk away during bloom, so automatic advancement means they don't have to babysit the timer - they can prep other things knowing the timer will alert them when it's time to pour again.
+WHEN the user taps "Start First Pour" after bloom completes
+THE SYSTEM SHALL advance to the first pour phase
+
+**Rationale:** The bloom phase is time-based (always 1 minute), but users may not be immediately ready to pour when the timer hits zero. Requiring a button tap gives users control over when to start the next phase, preventing the app from rushing them before they're positioned with kettle in hand.
 
 **Dependencies:** REQ-CT-002
 

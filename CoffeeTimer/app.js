@@ -42,6 +42,7 @@ const elements = {
     btnSingle: document.getElementById('btn-single'),
     btnDouble: document.getElementById('btn-double'),
     btnStartBrew: document.getElementById('btn-start-brew'),
+    btnBloomComplete: document.getElementById('btn-bloom-complete'),
     btnFirstPourComplete: document.getElementById('btn-first-pour-complete'),
     btnSecondPourComplete: document.getElementById('btn-second-pour-complete'),
     btnNewBrew: document.getElementById('btn-new-brew'),
@@ -64,6 +65,7 @@ function init() {
     elements.btnSingle.addEventListener('click', () => selectRecipe('single'));
     elements.btnDouble.addEventListener('click', () => selectRecipe('double'));
     elements.btnStartBrew.addEventListener('click', startBrew);
+    elements.btnBloomComplete.addEventListener('click', startFirstPour);
     elements.btnFirstPourComplete.addEventListener('click', () => completePour('first'));
     elements.btnSecondPourComplete.addEventListener('click', () => completePour('second'));
     elements.btnNewBrew.addEventListener('click', startNewBrew);
@@ -91,6 +93,10 @@ function startBrew() {
     // REQ-CT-003: Start bloom phase
     state.currentPhase = 'BLOOM_PHASE';
     state.phaseStartTime = Date.now();
+
+    // Hide bloom complete button initially
+    elements.btnBloomComplete.classList.add('hidden');
+
     showScreen('bloomPhase');
     startBloomTimer();
 }
@@ -104,10 +110,10 @@ function startBloomTimer() {
         const remaining = BLOOM_DURATION - elapsed;
 
         if (remaining <= 0) {
-            // REQ-CT-003: Auto-advance to first pour
+            // REQ-CT-003: Show button when bloom complete
             clearInterval(state.timerInterval);
             elements.bloomTimer.textContent = '0:00';
-            setTimeout(() => startFirstPour(), 500);
+            elements.btnBloomComplete.classList.remove('hidden');
         } else {
             // REQ-CT-009: Display countdown timer
             elements.bloomTimer.textContent = formatTime(remaining);

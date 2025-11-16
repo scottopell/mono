@@ -20,8 +20,8 @@ The app operates as a finite state machine with the following states:
 ```
 RECIPE_SELECTION
     ↓ (user selects recipe and taps "Start Brew")
-BLOOM_PHASE (60s countdown, auto-advances)
-    ↓ (timer reaches 0)
+BLOOM_PHASE (60s countdown, user-paced)
+    ↓ (user taps "Start First Pour" after timer reaches 0)
 FIRST_POUR_PHASE (user-paced, tap to advance)
     ↓ (user taps "Pour Complete")
 SECOND_POUR_PHASE (user-paced, tap to advance)
@@ -66,7 +66,8 @@ RECIPE_SELECTION
 **Bloom Phase (REQ-CT-003, REQ-CT-009):**
 - Start 60-second countdown on phase entry
 - `setInterval()` updates display every 100ms for smooth countdown
-- Auto-advance to FIRST_POUR_PHASE when countdown reaches 0
+- Show "Start First Pour" button when countdown reaches 0
+- User manually advances to FIRST_POUR_PHASE by tapping button
 - Display format: "0:45" (minutes:seconds)
 
 **Pour Phases (REQ-CT-009):**
@@ -107,8 +108,8 @@ RECIPE_SELECTION
 3. **Bloom Phase (REQ-CT-003):**
    - Display: "Pour [bloomWater]g to bloom grounds"
    - Display: Countdown timer
-   - No user interaction required
-   - Auto-advance to FIRST_POUR_PHASE at 0:00
+   - Display: "Start First Pour" button (hidden until timer reaches 0:00)
+   - User taps button to advance to FIRST_POUR_PHASE when ready
 
 4. **First Pour (REQ-CT-004, REQ-CT-005):**
    - Display: "Pour [pourWater]g - First Pour"
@@ -165,8 +166,9 @@ RECIPE_SELECTION
 
 **REQ-CT-003: Bloom Phase**
 - [ ] Timer counts down from 60 seconds
-- [ ] Auto-advances to first pour at 0 seconds
-- [ ] No user interaction required
+- [ ] "Start First Pour" button appears when timer reaches 0 seconds
+- [ ] Tapping "Start First Pour" advances to first pour phase
+- [ ] Button is hidden during countdown
 
 **REQ-CT-004: First Pour**
 - [ ] Single portion shows "Pour 150g - First Pour"
