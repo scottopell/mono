@@ -1,0 +1,140 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Install yq (YAML parser)
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Copy static sites
+        run: |
+          set -e
+          mkdir -p _site
+
+          CONFIG_FILE=".github/pages.yml"
+
+          # Read and process each site from config
+          SITE_COUNT=$(yq eval '.sites | length' "$CONFIG_FILE")
+
+          echo "Found $SITE_COUNT sites to deploy"
+
+          for i in $(seq 0 $(($SITE_COUNT - 1))); do
+            NAME=$(yq eval ".sites[$i].name" "$CONFIG_FILE")
+            PATH=$(yq eval ".sites[$i].path" "$CONFIG_FILE")
+            DESC=$(yq eval ".sites[$i].description" "$CONFIG_FILE")
+
+            echo "Processing: $NAME"
+
+            if [ ! -d "$PATH" ]; then
+              echo "Warning: $PATH not found, skipping"
+              continue
+            fi
+
+            # Copy static files
+            cp -r "$PATH" "_site/$NAME"
+            echo "✓ Copied static site: $NAME"
+          done
+
+      - name: Generate index page
+        run: |
+          CONFIG_FILE=".github/pages.yml"
+
+          TITLE=$(yq eval '.index.title // "My Projects"' "$CONFIG_FILE")
+          DESCRIPTION=$(yq eval '.index.description // ""' "$CONFIG_FILE")
+          SITE_COUNT=$(yq eval '.sites | length' "$CONFIG_FILE")
+
+          cat > _site/index.html << EOF
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>$TITLE</title>
+            <style>
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                max-width: 800px;
+                margin: 50px auto;
+                padding: 20px;
+                line-height: 1.6;
+              }
+              h1 { color: #333; }
+              .description { color: #666; margin-bottom: 30px; }
+              .projects { list-style: none; padding: 0; }
+              .projects li {
+                margin: 15px 0;
+                padding: 15px;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+              }
+              .projects a {
+                font-size: 1.2em;
+                color: #0366d6;
+                text-decoration: none;
+              }
+              .projects a:hover { text-decoration: underline; }
+              .project-desc { color: #666; margin-top: 5px; }
+            </style>
+          </head>
+          <body>
+            <h1>$TITLE</h1>
+            <p class="description">$DESCRIPTION</p>
+            <ul class="projects">
+          EOF
+
+          for i in $(seq 0 $(($SITE_COUNT - 1))); do
+            NAME=$(yq eval ".sites[$i].name" "$CONFIG_FILE")
+            DESC=$(yq eval ".sites[$i].description" "$CONFIG_FILE")
+
+            cat >> _site/index.html << EOF
+              <li>
+                <a href="/$REPO_NAME/$NAME/">$NAME</a>
+                <div class="project-desc">$DESC</div>
+              </li>
+          EOF
+          done
+
+          cat >> _site/index.html << EOF
+            </ul>
+          </body>
+          </html>
+          EOF
+        env:
+          REPO_NAME: ${{ github.event.repository.name }}
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
