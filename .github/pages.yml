@@ -11,8 +11,19 @@ sites:
   - name: coffee-timer
     path: CoffeeTimer
     description: "Pour over coffee timer"
+    # No build needed - static files only
+
+  - name: path-of-erosion
+    path: PathOfErosion
+    description: "Zen tile-placement puzzle game"
+    build:
+      - "npm ci"
+      - "npm run build"
 
   # Add more static sites here:
   # - name: another-app
   #   path: another-app
   #   description: "Description of another app"
+  #   build:  # Optional - only if build needed
+  #     - "npm install"
+  #     - "npm run build"

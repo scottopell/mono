@@ -1,0 +1,19 @@
+{
+  "name": "tile-game",
+  "version": "0.1.0",
+  "description": "Path of Erosion - tile placement puzzle game",
+  "type": "module",
+  "scripts": {
+    "build": "npm run build:wasm && npm run build:ts",
+    "build:wasm": "wasm-pack build --target web --out-dir dist/pkg",
+    "build:ts": "esbuild src/ui/main.ts --bundle --outfile=dist/ui.js --external:./pkg --define:process.env.NODE_ENV=\\\"production\\\"",
+    "dev": "concurrently \"cargo watch -x 'build --release --target wasm32-unknown-unknown'\" \"esbuild src/ui/main.ts --bundle --outfile=dist/ui.js --external:./pkg --watch\"",
+    "test": "cargo test"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {}
+}
