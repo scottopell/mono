@@ -1,0 +1,21 @@
+[package]
+name = "glibc-malloc-crash"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+jemalloc = []  # Feature flag for jemalloc test
+
+[dependencies]
+# Only dependencies needed for reproducers
+geojson = "0.24.2"      # For geojson reproducer
+serde_json = "1.0"      # Dependency of geojson
+jemallocator = "0.5.4"  # For workaround demonstration
+
+[[test]]
+name = "test_pure_std_repro"
+path = "tests/test_pure_std_repro.rs"
+
+[[test]]
+name = "test_geojson_repro"
+path = "tests/test_geojson_repro.rs"
