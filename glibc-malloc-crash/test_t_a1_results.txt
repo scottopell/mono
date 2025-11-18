@@ -1,0 +1,30 @@
+=== T-A1: MALLOC_ARENA_MAX Tuning Test ===
+
+Testing MALLOC_ARENA_MAX=1
+---
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 10.25s
+Result: CRASH
+
+Testing MALLOC_ARENA_MAX=2
+---
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 8.84s
+Result: CRASH
+
+Testing MALLOC_ARENA_MAX=4
+---
+error: test failed, to rerun pass `--test test_pure_std_repro`
+  process didn't exit successfully: `/home/user/mono/glibc-malloc-crash/target/release/deps/test_pure_std_repro-59b8ba70a4e4ec1d test_concurrent_string_and_vec_growth` (signal: 11, SIGSEGV: invalid memory reference)
+Result: CRASH
+
+Testing MALLOC_ARENA_MAX=8
+---
+error: test failed, to rerun pass `--test test_pure_std_repro`
+  process didn't exit successfully: `/home/user/mono/glibc-malloc-crash/target/release/deps/test_pure_std_repro-59b8ba70a4e4ec1d test_concurrent_string_and_vec_growth` (signal: 11, SIGSEGV: invalid memory reference)
+Result: CRASH
+
+Testing MALLOC_ARENA_MAX=64
+---
+error: test failed, to rerun pass `--test test_pure_std_repro`
+  process didn't exit successfully: `/home/user/mono/glibc-malloc-crash/target/release/deps/test_pure_std_repro-59b8ba70a4e4ec1d test_concurrent_string_and_vec_growth` (signal: 11, SIGSEGV: invalid memory reference)
+Result: CRASH
+
