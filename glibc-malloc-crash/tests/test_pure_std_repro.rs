@@ -153,3 +153,198 @@ fn test_concurrent_string_processing() {
 
     eprintln!("[TEST] String processing completed: {:?}", results);
 }
+#[test]
+fn test_1_thread() {
+    let large_string = "x".repeat(14 * 1024 * 1024);
+    let handles: Vec<_> = (0..1).map(|i| {
+        let content = large_string.clone();
+        std::thread::spawn(move || {
+            let mut vecs: Vec<Vec<String>> = Vec::new();
+            for chunk in content.as_bytes().chunks(1000) {
+                let mut inner_vec = Vec::new();
+                for byte in chunk { inner_vec.push(byte.to_string()); }
+                vecs.push(inner_vec);
+            }
+            vecs.len()
+        })
+    }).collect();
+    handles.into_iter().for_each(|h| { h.join().unwrap(); });
+}
+
+#[test]
+fn test_2_threads() {
+    let large_string = "x".repeat(14 * 1024 * 1024);
+    let handles: Vec<_> = (0..2).map(|i| {
+        let content = large_string.clone();
+        std::thread::spawn(move || {
+            let mut vecs: Vec<Vec<String>> = Vec::new();
+            for chunk in content.as_bytes().chunks(1000) {
+                let mut inner_vec = Vec::new();
+                for byte in chunk { inner_vec.push(byte.to_string()); }
+                vecs.push(inner_vec);
+            }
+            vecs.len()
+        })
+    }).collect();
+    handles.into_iter().for_each(|h| { h.join().unwrap(); });
+}
+
+#[test]
+fn test_4_threads() {
+    let large_string = "x".repeat(14 * 1024 * 1024);
+    let handles: Vec<_> = (0..4).map(|i| {
+        let content = large_string.clone();
+        std::thread::spawn(move || {
+            let mut vecs: Vec<Vec<String>> = Vec::new();
+            for chunk in content.as_bytes().chunks(1000) {
+                let mut inner_vec = Vec::new();
+                for byte in chunk { inner_vec.push(byte.to_string()); }
+                vecs.push(inner_vec);
+            }
+            vecs.len()
+        })
+    }).collect();
+    handles.into_iter().for_each(|h| { h.join().unwrap(); });
+}
+
+#[test]
+fn test_8_threads() {
+    let large_string = "x".repeat(14 * 1024 * 1024);
+    let handles: Vec<_> = (0..8).map(|i| {
+        let content = large_string.clone();
+        std::thread::spawn(move || {
+            let mut vecs: Vec<Vec<String>> = Vec::new();
+            for chunk in content.as_bytes().chunks(1000) {
+                let mut inner_vec = Vec::new();
+                for byte in chunk { inner_vec.push(byte.to_string()); }
+                vecs.push(inner_vec);
+            }
+            vecs.len()
+        })
+    }).collect();
+    handles.into_iter().for_each(|h| { h.join().unwrap(); });
+}
+#[test]
+fn test_small_1mb_3threads() {
+    let large_string = "x".repeat(1 * 1024 * 1024);  // 1MB
+    let handles: Vec<_> = (0..3).map(|i| {
+        let content = large_string.clone();
+        std::thread::spawn(move || {
+            let mut vecs: Vec<Vec<String>> = Vec::new();
+            for chunk in content.as_bytes().chunks(1000) {
+                let mut inner_vec = Vec::new();
+                for byte in chunk { inner_vec.push(byte.to_string()); }
+                vecs.push(inner_vec);
+            }
+            vecs.len()
+        })
+    }).collect();
+    handles.into_iter().for_each(|h| { h.join().unwrap(); });
+}
+
+#[test]
+fn test_medium_7mb_3threads() {
+    let large_string = "x".repeat(7 * 1024 * 1024);  // 7MB
+    let handles: Vec<_> = (0..3).map(|i| {
+        let content = large_string.clone();
+        std::thread::spawn(move || {
+            let mut vecs: Vec<Vec<String>> = Vec::new();
+            for chunk in content.as_bytes().chunks(1000) {
+                let mut inner_vec = Vec::new();
+                for byte in chunk { inner_vec.push(byte.to_string()); }
+                vecs.push(inner_vec);
+            }
+            vecs.len()
+        })
+    }).collect();
+    handles.into_iter().for_each(|h| { h.join().unwrap(); });
+}
+
+#[test]
+fn test_large_28mb_3threads() {
+    let large_string = "x".repeat(28 * 1024 * 1024);  // 28MB
+    let handles: Vec<_> = (0..3).map(|i| {
+        let content = large_string.clone();
+        std::thread::spawn(move || {
+            let mut vecs: Vec<Vec<String>> = Vec::new();
+            for chunk in content.as_bytes().chunks(1000) {
+                let mut inner_vec = Vec::new();
+                for byte in chunk { inner_vec.push(byte.to_string()); }
+                vecs.push(inner_vec);
+            }
+            vecs.len()
+        })
+    }).collect();
+    handles.into_iter().for_each(|h| { h.join().unwrap(); });
+}
+
+#[test]
+fn test_tiny_100kb_3threads() {
+    let large_string = "x".repeat(100 * 1024);  // 100KB
+    let handles: Vec<_> = (0..3).map(|i| {
+        let content = large_string.clone();
+        std::thread::spawn(move || {
+            let mut vecs: Vec<Vec<String>> = Vec::new();
+            for chunk in content.as_bytes().chunks(1000) {
+                let mut inner_vec = Vec::new();
+                for byte in chunk { inner_vec.push(byte.to_string()); }
+                vecs.push(inner_vec);
+            }
+            vecs.len()
+        })
+    }).collect();
+    handles.into_iter().for_each(|h| { h.join().unwrap(); });
+}
+#[test]
+fn test_2mb() {
+    let s = "x".repeat(2 * 1024 * 1024);
+    let h: Vec<_> = (0..3).map(|_| { let c = s.clone(); std::thread::spawn(move || { let mut v: Vec<Vec<String>> = Vec::new(); for ch in c.as_bytes().chunks(1000) { let mut iv = Vec::new(); for b in ch { iv.push(b.to_string()); } v.push(iv); } v.len() }) }).collect();
+    h.into_iter().for_each(|h| { h.join().unwrap(); });
+}
+
+#[test]
+fn test_4mb() {
+    let s = "x".repeat(4 * 1024 * 1024);
+    let h: Vec<_> = (0..3).map(|_| { let c = s.clone(); std::thread::spawn(move || { let mut v: Vec<Vec<String>> = Vec::new(); for ch in c.as_bytes().chunks(1000) { let mut iv = Vec::new(); for b in ch { iv.push(b.to_string()); } v.push(iv); } v.len() }) }).collect();
+    h.into_iter().for_each(|h| { h.join().unwrap(); });
+}
+
+#[test]
+fn test_6mb() {
+    let s = "x".repeat(6 * 1024 * 1024);
+    let h: Vec<_> = (0..3).map(|_| { let c = s.clone(); std::thread::spawn(move || { let mut v: Vec<Vec<String>> = Vec::new(); for ch in c.as_bytes().chunks(1000) { let mut iv = Vec::new(); for b in ch { iv.push(b.to_string()); } v.push(iv); } v.len() }) }).collect();
+    h.into_iter().for_each(|h| { h.join().unwrap(); });
+}
+#[test]
+fn test_64kb() {
+    let s = "x".repeat(64 * 1024);
+    let h: Vec<_> = (0..3).map(|_| { let c = s.clone(); std::thread::spawn(move || { let mut v: Vec<Vec<String>> = Vec::new(); for ch in c.as_bytes().chunks(1000) { let mut iv = Vec::new(); for b in ch { iv.push(b.to_string()); } v.push(iv); } v.len() }) }).collect();
+    h.into_iter().for_each(|h| { h.join().unwrap(); });
+}
+
+#[test]
+fn test_128kb() {
+    let s = "x".repeat(128 * 1024);
+    let h: Vec<_> = (0..3).map(|_| { let c = s.clone(); std::thread::spawn(move || { let mut v: Vec<Vec<String>> = Vec::new(); for ch in c.as_bytes().chunks(1000) { let mut iv = Vec::new(); for b in ch { iv.push(b.to_string()); } v.push(iv); } v.len() }) }).collect();
+    h.into_iter().for_each(|h| { h.join().unwrap(); });
+}
+
+#[test]
+fn test_256kb() {
+    let s = "x".repeat(256 * 1024);
+    let h: Vec<_> = (0..3).map(|_| { let c = s.clone(); std::thread::spawn(move || { let mut v: Vec<Vec<String>> = Vec::new(); for ch in c.as_bytes().chunks(1000) { let mut iv = Vec::new(); for b in ch { iv.push(b.to_string()); } v.push(iv); } v.len() }) }).collect();
+    h.into_iter().for_each(|h| { h.join().unwrap(); });
+}
+
+#[test]
+fn test_512kb() {
+    let s = "x".repeat(512 * 1024);
+    let h: Vec<_> = (0..3).map(|_| { let c = s.clone(); std::thread::spawn(move || { let mut v: Vec<Vec<String>> = Vec::new(); for ch in c.as_bytes().chunks(1000) { let mut iv = Vec::new(); for b in ch { iv.push(b.to_string()); } v.push(iv); } v.len() }) }).collect();
+    h.into_iter().for_each(|h| { h.join().unwrap(); });
+}
+#[test]
+fn test_3mb() {
+    let s = "x".repeat(3 * 1024 * 1024);
+    let h: Vec<_> = (0..3).map(|_| { let c = s.clone(); std::thread::spawn(move || { let mut v: Vec<Vec<String>> = Vec::new(); for ch in c.as_bytes().chunks(1000) { let mut iv = Vec::new(); for b in ch { iv.push(b.to_string()); } v.push(iv); } v.len() }) }).collect();
+    h.into_iter().for_each(|h| { h.join().unwrap(); });
+}
