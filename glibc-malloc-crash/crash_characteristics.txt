@@ -1,0 +1,26 @@
+=== CRASH CHARACTERISTICS TEST (5 runs) ===
+
+=== Run 1 ===
+error: test failed, to rerun pass `--test test_pure_std_repro`
+  process didn't exit successfully: `/home/user/mono/glibc-malloc-crash/target/release/deps/test_pure_std_repro-59b8ba70a4e4ec1d test_concurrent_string_and_vec_growth` (signal: 11, SIGSEGV: invalid memory reference)
+Exit code: 0, Duration: 3s
+
+=== Run 2 ===
+error: test failed, to rerun pass `--test test_pure_std_repro`
+  process didn't exit successfully: `/home/user/mono/glibc-malloc-crash/target/release/deps/test_pure_std_repro-59b8ba70a4e4ec1d test_concurrent_string_and_vec_growth` (signal: 11, SIGSEGV: invalid memory reference)
+Exit code: 0, Duration: 2s
+
+=== Run 3 ===
+error: test failed, to rerun pass `--test test_pure_std_repro`
+  process didn't exit successfully: `/home/user/mono/glibc-malloc-crash/target/release/deps/test_pure_std_repro-59b8ba70a4e4ec1d test_concurrent_string_and_vec_growth` (signal: 11, SIGSEGV: invalid memory reference)
+Exit code: 0, Duration: 3s
+
+=== Run 4 ===
+error: test failed, to rerun pass `--test test_pure_std_repro`
+  process didn't exit successfully: `/home/user/mono/glibc-malloc-crash/target/release/deps/test_pure_std_repro-59b8ba70a4e4ec1d test_concurrent_string_and_vec_growth` (signal: 11, SIGSEGV: invalid memory reference)
+Exit code: 0, Duration: 3s
+
+=== Run 5 ===
+error: test failed, to rerun pass `--test test_pure_std_repro`
+  process didn't exit successfully: `/home/user/mono/glibc-malloc-crash/target/release/deps/test_pure_std_repro-59b8ba70a4e4ec1d test_concurrent_string_and_vec_growth` (signal: 11, SIGSEGV: invalid memory reference)
+Exit code: 0, Duration: 2s
