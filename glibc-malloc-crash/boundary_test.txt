@@ -1,0 +1,13 @@
+=== Testing Thread Count = Arena Max Hypothesis ===
+
+4 threads with MALLOC_ARENA_MAX=3 (should CRASH):
+error: test failed, to rerun pass `--test test_variable_threads`
+
+4 threads with MALLOC_ARENA_MAX=4 (should PASS):
+error: test failed, to rerun pass `--test test_variable_threads`
+
+6 threads with MALLOC_ARENA_MAX=6 (should PASS):
+error: test failed, to rerun pass `--test test_variable_threads`
+
+6 threads with MALLOC_ARENA_MAX=5 (should CRASH):
+error: test failed, to rerun pass `--test test_variable_threads`
