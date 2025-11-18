@@ -62,9 +62,11 @@ static GLOBAL: Jemalloc = Jemalloc;
 
 ## Investigation
 
-For systematic root cause analysis, see the investigation framework in the weather-radar-platform repo:
-- `PROMPT_WEIRD_MALLOC_CRASH.md` - Scientific method investigation guide
-- Covers hypothesis generation, testing protocol, stopping criteria
+For systematic root cause analysis, see **[PROMPT_WEIRD_MALLOC_CRASH.md](PROMPT_WEIRD_MALLOC_CRASH.md)**:
+- Scientific method investigation framework
+- Hypothesis generation across 6 categories (malloc tuning, kernel, sandboxing, etc.)
+- Testing protocol with clear stopping criteria
+- Designed to narrow in on environmental factors without requiring custom malloc implementation
 
 ## Background
 
