@@ -1,9 +1,11 @@
-# Synthesis of Prior Investigations (PRs #10-14)
+# Synthesis of Prior Investigations (PRs #10-14 + Phase 5)
 
-**Purpose**: Document what we ALREADY KNOW from 5 prior investigations to avoid redundant work.
+**Purpose**: Document what we ALREADY KNOW from prior investigations to avoid redundant work.
 
-**Date**: 2025-11-18
-**Investigations Analyzed**: PRs #10, #11, #12, #13, #14
+**Date**: 2025-11-18 (Updated: 2025-11-21 with Phase 5 findings)
+**Investigations Analyzed**:
+- PRs #10, #11, #12, #13, #14 (original FRESH branches)
+- Phase 5 analysis (claude/merge-geojson-analysis branch) - **precise threshold measurements**
 
 ---
 
@@ -76,12 +78,20 @@ SIGSEGV at 0x7ec9a294fa58 (offset 10,840 < 12,288)  ← Should be valid!
 
 **Evidence**: 124K+ line strace logs across all PRs
 
-### Finding 6: Allocation Count Threshold (PR #14)
+### Finding 6: Allocation Count Threshold (PR #14 + Phase 5)
 
-**Crash threshold**: ~3-9 million allocations across threads
+**Rough threshold (PR #14)**: ~3-9 million allocations across threads
+
+**Precise thresholds (Phase 5 - claude/merge-geojson-analysis branch)**:
+- **Std-only pattern**: 9.4-10.9M allocations before crash
+- **GeoJSON pattern**: 7.9-9.0M allocations before crash
+- **GeoJSON complexity tax**: 15-20% worse (nested structures carry metadata penalty)
+- **Universal safe threshold**: ≤7M allocations (22% safety margin, validated across 16 tests)
+- **Formula validation**: 95% accuracy between theory and experiment
+
 **Address space limit**: ~300-350 MB (gVisor constraint)
 
-**Evidence**: Binary search testing, /proc/self/maps measurements
+**Evidence**: PR #14 /proc/self/maps measurements + Phase 5 binary search (16 threshold tests)
 
 ---
 
@@ -191,18 +201,26 @@ All 5 PRs stopped at appropriate natural boundaries:
 
 ### Question 1: Allocation Pattern Details
 **Known**: Millions of tiny allocations trigger crash
-**Unknown**:
-- What is the EXACT allocation count threshold? (within ±10%)
-- How do allocation SIZE variations affect the count threshold?
+**Known (Phase 5)**:
+- ✅ **Precise crash thresholds**: Std-only 9.4-10.9M, GeoJSON 7.9-9.0M allocations
+- ✅ **SIZE variations affect threshold**: GeoJSON 15-20% worse (nested structures)
+- ✅ **Universal safe threshold**: ≤7M allocations (22% safety margin)
+- ✅ **Formula validated**: 95% accuracy between theory and experiment
+
+**Still Unknown**:
 - Does allocation RATE (speed) matter or just total count?
+- Exact metadata bytes per allocation (inferred ~16 bytes, not directly measured)
 
 ### Question 2: GeoJSON vs Std-Only Differences
-**Known**: Both patterns likely crash (similar to original crash pattern)
-**Unknown**:
-- Do they have different allocation counts? (GeoJSON might be lower due to serde_json efficiency)
-- Do they stress the system differently? (nested structures vs uniform tiny allocations)
-- Do they fragment memory differently?
-- Do they have different deallocation patterns?
+**Known**: Both patterns crash (confirmed in multiple branches)
+**Known (Phase 5)**:
+- ✅ **Different thresholds**: GeoJSON 7.9-9.0M, Std-only 9.4-10.9M
+- ✅ **Stress differently**: GeoJSON nested structures = 15-20% metadata penalty
+- ✅ **Allocation counts**: GeoJSON ~15.75M total, Std-only ~44M total
+
+**Still Unknown**:
+- Do they fragment memory differently? (VMA count comparison)
+- Do they have different deallocation patterns? (interleaved vs bulk)
 
 ### Question 3: Failure Mechanism Nuances
 **Known**: mprotect returns 0 but doesn't map memory
@@ -235,20 +253,26 @@ All 5 PRs stopped at appropriate natural boundaries:
 ✅ ~66MB arena overhead (measured via /proc/self/maps)
 ✅ Kernel 4.4.0 involvement (environmental correlation)
 
+### Tier 2.5 Evidence (85-95% confidence - Phase 5):
+✅ **Precise allocation thresholds** (9.4-10.9M std, 7.9-9.0M GeoJSON via binary search)
+✅ **GeoJSON complexity tax** (15-20% quantified penalty for nested structures)
+✅ **Universal safe threshold** (≤7M allocations, validated across 16 tests)
+✅ **Formula validation** (95% accuracy between theoretical and experimental)
+
 ### Tier 3 Evidence (60-80% confidence):
-⚠️ Exact allocation count threshold (~3-9M range, not precise)
-⚠️ Metadata per allocation (~16-24 bytes, estimated)
+⚠️ Metadata per allocation (~16 bytes inferred from formula validation, not directly measured)
 ⚠️ gVisor internal implementation details (inferred, not confirmed)
 
 ---
 
 ## Key Artifacts Preserved
 
-### Documents (Across All PRs):
+### Documents (Across All PRs + Phase 5):
 - `INVESTIGATION_LOG.md` (multiple versions, 1000+ lines each)
 - `FINAL_REPORT.md`, `MECHANISM_SUMMARY.md`
-- `ALLOCATION_COUNT_BREAKTHROUGH.md` (PR #14)
+- `ALLOCATION_COUNT_BREAKTHROUGH.md` (PR #14 - conceptual breakthrough)
 - Phase documents (PHASE1-5)
+- **Phase 5 Threshold Analysis** (claude/merge-geojson-analysis) - **precise binary search results**
 - Cross-PR synthesis (CROSS_PR_SYNTHESIS.md)
 
 ### Test Files:

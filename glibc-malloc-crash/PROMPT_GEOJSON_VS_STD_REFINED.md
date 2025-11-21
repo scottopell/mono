@@ -49,7 +49,11 @@ Crash when: (arena_count × 66MB) + (allocation_count × metadata) > ~350MB
 ### Known Measurements
 - **Arena overhead**: ~66 MB (measured, PR #14)
 - **Address space limit**: ~300-350 MB (gVisor constraint)
-- **Allocation count threshold**: ~3-9 million (rough range, needs precision)
+- **Allocation count thresholds** (Phase 5 binary search):
+  - **Std-only**: 9.4-10.9M allocations before crash
+  - **GeoJSON**: 7.9-9.0M allocations before crash (15-20% worse)
+  - **Universal safe**: ≤7M allocations (22% safety margin)
+- **Formula validation**: 95% accuracy (Phase 5)
 - **100% effective workaround**: `MALLOC_ARENA_MAX=2`
 
 ### Known Test Results
@@ -61,29 +65,24 @@ Crash when: (arena_count × 66MB) + (allocation_count × metadata) > ~350MB
 
 ---
 
-## Focused Objectives (4 Measurements)
+## Focused Objectives (3 Measurements)
 
-### Objective 1: Measure Exact Allocation Counts
+**Note**: Phase 5 already measured precise allocation counts and crash thresholds. This investigation focuses on UNMEASURED aspects to complete the mechanistic understanding.
 
-**Question**: How many malloc() calls does each pattern make?
+### Objective 1: Validate Phase 5 Thresholds (Optional)
 
-**Method**:
-```c
-// LD_PRELOAD malloc counter
-static atomic_size_t malloc_count = 0;
-void* malloc(size_t size) {
-    atomic_fetch_add(&malloc_count, 1);
-    return real_malloc(size);
-}
-```
+**Question**: Do Phase 5 thresholds (9.4-10.9M std, 7.9-9.0M GeoJSON) reproduce in sandbox?
 
-**Expected**:
-- **GeoJSON**: ~5-10M allocations/thread (70K features × ~70-140 allocs/feature)
-- **Std-only**: ~14M allocations/thread (14MB ÷ 1000 bytes × 1000 to_string calls)
+**Method**: Run existing tests and verify crash occurs at predicted thresholds
 
-**Goal**: ±10% precision on these counts
+**Phase 5 Findings to Validate**:
+- **GeoJSON**: Crashes at 7.9-9.0M allocations (total ~15.75M across threads)
+- **Std-only**: Crashes at 9.4-10.9M allocations (total ~44M across threads)
+- **Universal safe**: ≤7M allocations per thread
 
-**Deliverable**: Table with measured counts and methodology
+**Goal**: Confirm Phase 5 findings hold in current sandbox environment
+
+**Deliverable**: Quick validation table (skip if time-constrained, Phase 5 already established this)
 
 ### Objective 2: Measure Size Distributions
 
@@ -154,57 +153,13 @@ grep -E "(heap|stack|anon)" maps_checkpoint_*.txt | wc -l
 
 ---
 
-## Streamlined 3-Phase Methodology
+## Streamlined 2-Phase Methodology
 
-### Phase 1: Allocation Count Measurement (60-90 min)
+**Note**: Phase 5 already measured allocation counts. Focus on size distributions, deallocation patterns, and fragmentation.
 
-**Step 1.1**: Create LD_PRELOAD malloc counter
-```c
-// malloc_counter.c
-#define _GNU_SOURCE
-#include <dlfcn.h>
-#include <stdio.h>
-#include <stdatomic.h>
+### Phase 1: Pattern Characterization (60-90 min)
 
-static void* (*real_malloc)(size_t) = NULL;
-static atomic_size_t count = 0;
-
-void* malloc(size_t size) {
-    if (!real_malloc) real_malloc = dlsym(RTLD_NEXT, "malloc");
-    size_t c = atomic_fetch_add(&count, 1);
-    if (c % 100000 == 0) {
-        fprintf(stderr, "[MALLOC_COUNT] %zu\n", c);
-    }
-    return real_malloc(size);
-}
-
-// Compile: gcc -shared -fPIC malloc_counter.c -o malloc_counter.so -ldl
-```
-
-**Step 1.2**: Run both tests with counter
-```bash
-# GeoJSON test
-LD_PRELOAD=./malloc_counter.so cargo test --test test_geojson_repro \
-  test_concurrent_geojson_parsing -- --nocapture 2>&1 | tee geojson_count.log
-
-# Std-only test
-LD_PRELOAD=./malloc_counter.so cargo test --test test_pure_std_repro \
-  test_concurrent_string_and_vec_growth -- --nocapture 2>&1 | tee std_count.log
-
-# Extract final counts
-grep "MALLOC_COUNT" geojson_count.log | tail -1
-grep "MALLOC_COUNT" std_count.log | tail -1
-```
-
-**Step 1.3**: Validate counts match expectations
-- GeoJSON: 5-10M range?
-- Std-only: ~14M?
-
-**Deliverable**: `ALLOCATION_COUNTS.md`
-
-### Phase 2: Pattern Characterization (60-90 min)
-
-**Step 2.1**: Measure size distributions
+**Step 1.1**: Measure size distributions
 ```bash
 # Modify malloc_counter.c to log sizes
 void* malloc(size_t size) {
@@ -217,101 +172,97 @@ LD_PRELOAD=./malloc_logger.so cargo test ... 2> sizes.log
 grep "SIZE," sizes.log | cut -d, -f2 | sort -n | uniq -c > histogram.txt
 ```
 
-**Step 2.2**: Measure allocation rate over time
+**Step 1.2**: Measure deallocation patterns
 ```rust
 // Add to both test files
 use std::time::Instant;
 static START: Lazy<Instant> = Lazy::new(|| Instant::now());
+static LIVE_ALLOCS: AtomicUsize = AtomicUsize::new(0);
 
-// Log periodically
-eprintln!("[{}ms] Checkpoint", START.elapsed().as_millis());
+// Track alloc/free, log periodically
+eprintln!("[{}ms] Live: {}", START.elapsed().as_millis(), LIVE_ALLOCS.load(Ordering::Relaxed));
 ```
 
-**Step 2.3**: Measure live allocations
-```rust
-static LIVE_ALLOCS: AtomicUsize = AtomicUsize::new(0);
-// Track alloc/free, log periodically
+**Step 1.3**: Measure memory fragmentation
+```bash
+# Capture /proc/self/maps at intervals
+cat /proc/self/maps > maps_checkpoint_${PCT}.txt
+
+# Count VMAs
+grep -E "(heap|anon)" maps_checkpoint_*.txt | wc -l
 ```
 
 **Deliverable**: `PATTERN_CHARACTERIZATION.md`
 
-### Phase 3: Model Refinement & Validation (30-60 min)
+### Phase 2: Model Refinement & Validation (30-60 min)
 
-**Step 3.1**: Calculate metadata per allocation
+**Note**: Phase 5 already validated the formula at 95% accuracy. This phase focuses on understanding WHY patterns differ.
+
+**Step 2.1**: Calculate metadata per allocation from measurements
 ```
-From allocation counts and VmSize measurements:
+Using Phase 5 thresholds and new size distribution data:
 metadata_per_alloc = (VmSize_at_crash - arena_overhead - data_size) / allocation_count
 
-Example:
-(350MB - 198MB - 14MB) / 14M allocs = 138MB / 14M = ~10 bytes/alloc
+GeoJSON: Higher metadata/alloc due to nested structures?
+Std-only: Lower metadata/alloc due to uniform tiny strings?
 ```
 
-**Step 3.2**: Refine formula with measured values
+**Step 2.2**: Explain the 15-20% GeoJSON penalty
 ```
-Original: (arenas × 66MB) + (count × metadata) > 350MB
-Refined:  (arenas × 66MB ± X%) + (count × YY bytes ± Z%) > 350MB ± W%
-```
-
-**Step 3.3**: Validate predictive power
-```rust
-// Create test with predicted crash count
-// If model accurate: should crash at predicted count ±10%
+Question: Why does GeoJSON crash 15-20% earlier than std-only?
+Hypothesis: Nested structures → more malloc metadata overhead
+Evidence: Size distribution + fragmentation measurements
 ```
 
-**Deliverable**: `REFINED_MODEL.md`
+**Step 2.3**: Document mechanistic understanding
+```
+Create clear explanation:
+- What allocation pattern causes what system stress
+- Why GeoJSON and std-only differ mechanistically
+- What user-facing patterns to avoid
+```
+
+**Deliverable**: `MECHANISTIC_UNDERSTANDING.md`
 
 ---
 
 ## Specific Questions to Answer
 
-### Question 1: Allocation Count Precision
-**Current**: ~3-9M allocation range (vague)
-**Goal**: X.XX million ± Y% (precise)
-**Method**: LD_PRELOAD counting
-**Success**: ±10% precision
+### Question 1: Allocation Count Precision ✅ ANSWERED (Phase 5)
+**Phase 5 Result**: Precise thresholds measured via binary search
+- **GeoJSON**: 7.9-9.0M allocations before crash
+- **Std-only**: 9.4-10.9M allocations before crash
+- **Universal safe**: ≤7M allocations
+- **Formula validation**: 95% accuracy
 
-### Question 2: Pattern Mechanisms
-**Current**: "Patterns differ" (qualitative)
-**Goal**: Quantified differences (rate, size distribution, deallocation)
+**Optional**: Validate these thresholds in current sandbox environment
+
+### Question 2: Pattern Mechanisms (FOCUS HERE)
+**Current**: "GeoJSON crashes 15-20% earlier" (Phase 5 quantified)
+**Still Unknown**: WHY? What mechanistic differences cause this?
+**Goal**: Quantified differences (size distribution, deallocation, fragmentation)
 **Method**: Instrumentation + measurement
-**Success**: Clear mechanistic distinction
+**Success**: Clear mechanistic explanation
 
-### Question 3: Model Accuracy
-**Current**: Formula with estimates
-**Goal**: Formula with measured coefficients
-**Method**: Calculate from measurements
-**Success**: Predict crash for new pattern within ±15%
-
-### Question 4: Deallocation Impact
+### Question 3: Deallocation Impact (FOCUS HERE)
 **Current**: Unknown if it matters
 **Goal**: Does interleaved free() reduce pressure?
 **Method**: Live allocation tracking
 **Success**: Clear yes/no with evidence
 
+### Question 4: Fragmentation Differences (FOCUS HERE)
+**Current**: Unknown if patterns fragment differently
+**Goal**: Measure VMA count differences between patterns
+**Method**: /proc/self/maps analysis at intervals
+**Success**: Quantified fragmentation comparison
+
 ---
 
 ## Deliverables (Evidence-Based)
 
-### Primary: `ALLOCATION_COUNTS.md`
+**Note**: Phase 5 already measured allocation counts. Focus deliverables on unmeasured aspects.
 
-```markdown
-# Allocation Count Measurements
-
-## Methodology
-[LD_PRELOAD malloc counter implementation]
-
-## Results
-
-| Test Pattern | Allocations/Thread | Total (3 threads) | Measurement Method |
-|--------------|-------------------|------------------|-------------------|
-| GeoJSON | X.XX million | Y.YY million | LD_PRELOAD counter |
-| Std-only | A.AA million | B.BB million | LD_PRELOAD counter |
-
-## Analysis
-[How do these compare to threshold? Why the difference?]
-```
-
-### Secondary: `PATTERN_COMPARISON.md`
+### Primary: `PATTERN_CHARACTERIZATION.md`
 
 ```markdown
 # GeoJSON vs Std-Only: Mechanistic Comparison
@@ -335,24 +286,32 @@ Refined:  (arenas × 66MB ± X%) + (count × YY bytes ± Z%) > 350MB ± W%
 | Std-only | YYY | [More/Less fragmented] |
 ```
 
-### Tertiary: `REFINED_MODEL.md`
+### Secondary: `MECHANISTIC_UNDERSTANDING.md`
 
 ```markdown
-# Refined Root Cause Model
+# Why GeoJSON Crashes 15-20% Earlier Than Std-Only
 
-## Original (PR #14)
-Crash when: (arenas × 66MB) + (count × metadata) > 350MB
+## Phase 5 Baseline
+- **GeoJSON threshold**: 7.9-9.0M allocations
+- **Std-only threshold**: 9.4-10.9M allocations
+- **Difference**: 15-20% worse for GeoJSON
 
-## Refined (This Investigation)
-Crash when: (arenas × AA.A MB ± X%) + (count × BB bytes ± Y%) > CCC MB ± Z%
+## Size Distribution Analysis
+[Histograms showing GeoJSON has more varied sizes vs std-only uniform tiny strings]
 
-## Measured Coefficients
-- arena_overhead: AA.A MB (measured via /proc/self/maps, N=5 runs)
-- metadata_per_alloc: BB bytes (calculated from VmSize and count)
-- address_space_limit: CCC MB (measured at crash, N=5 runs)
+## Metadata Overhead Calculation
+- GeoJSON metadata/alloc: XX bytes (from size distribution + VmSize)
+- Std-only metadata/alloc: YY bytes
+- **Explanation**: Nested structures carry ZZ% more overhead
 
-## Validation
-Predicted crash at X.XX million allocs → Observed crash at Y.YY million (within ±ZZ%)
+## Deallocation Impact
+[Does interleaved free() in GeoJSON help or hurt? Live allocation graphs]
+
+## Fragmentation Impact
+[VMA count comparison - does varied size distribution fragment more?]
+
+## Conclusion
+GeoJSON crashes earlier because: [Clear mechanistic explanation]
 ```
 
 ---
@@ -360,17 +319,22 @@ Predicted crash at X.XX million allocs → Observed crash at Y.YY million (withi
 ## Success Criteria (Refined)
 
 ### Must Achieve
-✅ Allocation counts measured with ±10% precision
-✅ Size distributions documented with histograms
-✅ Deallocation patterns characterized (interleaved vs bulk)
-✅ Memory fragmentation quantified (VMA counts)
-✅ Model coefficients refined from measurements
+✅ Size distributions documented with histograms (unmeasured)
+✅ Deallocation patterns characterized (interleaved vs bulk) (unmeasured)
+✅ Memory fragmentation quantified (VMA counts) (unmeasured)
+✅ Mechanistic explanation for 15-20% GeoJSON penalty
 ✅ All measurements include methodology documentation
 
 ### Nice to Have
-⭐ Predictive model validates on new test pattern
-⭐ Exact metadata per allocation calculated
-⭐ Address space limit measured with ±5% precision
+⭐ Phase 5 thresholds validated in current sandbox
+⭐ Exact metadata per allocation calculated for each pattern
+⭐ Allocation rate over time characterized
+
+### Already Achieved (Phase 5)
+✅ Allocation counts measured with ±10% precision
+✅ Crash thresholds identified (GeoJSON 7.9-9.0M, Std-only 9.4-10.9M)
+✅ Formula validated at 95% accuracy
+✅ Universal safe threshold established (≤7M allocations)
 
 ### Explicitly NOT Required
 ❌ glibc source code analysis (out of scope)
@@ -380,21 +344,19 @@ Predicted crash at X.XX million allocs → Observed crash at Y.YY million (withi
 
 ---
 
-## Time Budget (3-4 Hours)
+## Time Budget (2-3 Hours)
 
-**Phase 1** (Allocation counts): 60-90 min
-- 20 min: Write/compile LD_PRELOAD counter
-- 40-70 min: Run tests, extract counts, validate
+**Note**: Reduced from 3-4 hours because Phase 5 already measured allocation counts and thresholds.
 
-**Phase 2** (Pattern characterization): 60-90 min
-- 30 min: Size distribution measurement
-- 30 min: Deallocation + fragmentation analysis
+**Phase 1** (Pattern characterization): 60-90 min
+- 30 min: Size distribution measurement (LD_PRELOAD logger)
+- 30-60 min: Deallocation patterns + fragmentation analysis
 
-**Phase 3** (Model refinement): 30-60 min
-- 20 min: Calculate coefficients from data
-- 10-40 min: Validate predictions
+**Phase 2** (Mechanistic understanding): 30-60 min
+- 20 min: Calculate metadata per allocation from measurements
+- 10-40 min: Document WHY GeoJSON crashes 15-20% earlier
 
-**Total**: 150-240 minutes
+**Total**: 90-150 minutes (vs 150-240 original)
 
 ---
 
@@ -429,9 +391,10 @@ MALLOC_ARENA_MAX=2 cargo test ...  # Should pass
 
 🚩 Re-testing arena threshold → NO, it's definitive (MALLOC_ARENA_MAX ≥ 3)
 🚩 Re-testing thread count → NO, it's irrelevant (tested in PRs #11-13)
-🚩 Speculating about counts → NO, measure them with LD_PRELOAD
-🚩 "Approximately X million" → NO, we need ±10% precision
+🚩 Re-measuring allocation counts → NO, Phase 5 already did this (9.4-10.9M std, 7.9-9.0M GeoJSON)
+🚩 Binary searching for thresholds → NO, Phase 5 already established precise thresholds
 🚩 Skipping measurement methodology → NO, document HOW you measured
+🚩 Not explaining WHY patterns differ → YES, this is the FOCUS
 
 ---
 
@@ -439,14 +402,14 @@ MALLOC_ARENA_MAX=2 cargo test ...  # Should pass
 
 At completion, you should be able to state:
 
-1. **Allocation counts**: "GeoJSON: X.XX ± 0.YY million, Std-only: A.AA ± 0.BB million"
-2. **Pattern difference**: "GeoJSON allocates in bursts at ZZ k/sec with varied sizes; std-only steady at WW k/sec with uniform tiny sizes"
-3. **Deallocation**: "GeoJSON [does/doesn't] free during parsing; std-only bulk frees at end"
-4. **Fragmentation**: "GeoJSON creates XXX VMAs; std-only creates YYY VMAs"
-5. **Model**: "(arenas × AA MB) + (count × BB bytes) > CCC MB with ±DD% error"
+1. **Allocation counts** ✅ KNOWN (Phase 5): "GeoJSON: 7.9-9.0M threshold, ~15.75M total; Std-only: 9.4-10.9M threshold, ~44M total"
+2. **Size distribution** (MEASURE): "GeoJSON has varied sizes (4B-200B, nested structures); std-only has uniform tiny (1-3B strings)"
+3. **Deallocation** (MEASURE): "GeoJSON [does/doesn't] free during parsing; std-only bulk frees at end"
+4. **Fragmentation** (MEASURE): "GeoJSON creates XXX VMAs; std-only creates YYY VMAs"
+5. **WHY GeoJSON 15-20% worse** (EXPLAIN): "GeoJSON crashes earlier because [mechanistic explanation based on size distribution + deallocation + fragmentation]"
 
 ---
 
-**Begin investigation. Build on 40+ hours of prior work. Measure precisely, skip redundant tests.**
+**Begin investigation. Build on 40+ hours of prior work including Phase 5 precise thresholds.**
 
-🎯 Focus: Precision measurements to refine the model, not re-proving known facts.
+🎯 Focus: Understand WHY patterns differ mechanistically, not just that they crash at different thresholds.
