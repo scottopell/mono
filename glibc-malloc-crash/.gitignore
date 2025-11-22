@@ -1,2 +1,12 @@
+# Rust build artifacts
 /target/
 Cargo.lock
+
+# Large raw data files from malloc instrumentation
+# Summaries and histograms are tracked, raw logs are too large for git (605MB+)
+*_sizes.log
+*_sizes_raw.txt
+*_sizes_sorted.txt
+
+# Compiled shared libraries (source is tracked)
+*.so
