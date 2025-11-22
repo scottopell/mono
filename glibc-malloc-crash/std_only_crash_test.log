@@ -1,0 +1,62 @@
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+ERROR: ld.so: object './malloc_logger.so' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
+
+=== MALLOC LOGGER SUMMARY ===
+Total malloc calls: 0
+Total free calls: 0
+Live allocations at exit: 0
+============================
+
+=== MALLOC LOGGER SUMMARY ===
+Total malloc calls: 0
+Total free calls: 0
+Live allocations at exit: 0
+============================
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s
+     Running tests/test_pure_std_repro.rs (target/debug/deps/test_pure_std_repro-b2b07295efccb335)
+
+running 1 test
+
+[TEST] Pure std: Concurrent large String + Vec growth
+[TEST] String size: 14680064 bytes
+[THREAD 0] Starting work...
+[THREAD 1] Starting work...
+[THREAD 2] Starting work...
+[THREAD 1] Built 14681 vecs
+error: test failed, to rerun pass `--test test_pure_std_repro`
+
+Caused by:
+  process didn't exit successfully: `/home/user/mono/glibc-malloc-crash/target/debug/deps/test_pure_std_repro-b2b07295efccb335 test_concurrent_string_and_vec_growth --nocapture` (signal: 11, SIGSEGV: invalid memory reference)
