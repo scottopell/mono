@@ -1,0 +1,33 @@
+=== Size Distribution Analysis ===
+Log file: geojson_sizes.log
+Total allocations: 3759739
+
+Size statistics:
+  Min: 1 bytes
+  Max: 46844190 bytes
+  P50 (median): 10 bytes
+  P90: 632 bytes
+  P99: 632 bytes
+  Unique sizes: 872
+
+Top 20 allocation sizes:
+ 685034 4
+ 660604 632
+ 411271 11
+ 275107 10
+ 233291 8
+ 229129 16
+ 223658 7
+ 222934 128
+ 221962 5
+ 220719 2
+  73403 582
+  40574 3
+  40498 6
+  34066 576
+  18449 32
+  15895 12
+  15857 24
+   9724 52
+   8153 328
+   8016 656

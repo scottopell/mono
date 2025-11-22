@@ -1,0 +1,65 @@
+=== SIZE DISTRIBUTION COMPARISON ===
+
+GEOJSON PATTERN:
+  Total allocations: 3,759,739
+  Total malloc calls: 3,376,657
+  Total free calls:   3,376,652
+  Free rate: 99.9998%
+  
+  Size statistics:
+    Min: 1 byte
+    Median (P50): 10 bytes
+    P90: 632 bytes
+    P99: 632 bytes
+    Max: 46,844,190 bytes (46.8 MB - the GeoJSON string)
+    Unique sizes: 872
+  
+  Top 10 allocation sizes:
+    685,034 × 4 bytes    (18.2%)
+    660,604 × 632 bytes  (17.6%)
+    411,271 × 11 bytes   (10.9%)
+    275,107 × 10 bytes   (7.3%)
+    233,291 × 8 bytes    (6.2%)
+    229,129 × 16 bytes   (6.1%)
+    223,658 × 7 bytes    (6.0%)
+    222,934 × 128 bytes  (5.9%)
+    221,962 × 5 bytes    (5.9%)
+    220,719 × 2 bytes    (5.9%)
+  
+  Distribution: HIGHLY VARIED - nested JSON structures create allocations
+                across wide size range (1B to 632B for common sizes)
+
+STD-ONLY PATTERN:
+  Total allocations: 45,166,826
+  Total malloc calls: 44,084,473
+  Total free calls:   44,084,468
+  Free rate: 99.9999%
+  
+  Size statistics:
+    Min: 1 byte
+    Median (P50): 3 bytes
+    P90: 3 bytes
+    P99: 192 bytes
+    Max: 14,680,064 bytes (14.68 MB - the cloned string)
+    Unique sizes: 1,101
+  
+  Top 10 allocation sizes:
+    44,097,210 × 3 bytes  (97.6% !!!)
+    53,822 × 6 bytes      (0.1%)
+    51,500 × 96 bytes     (0.1%)
+    46,351 × 32 bytes     (0.1%)
+    45,410 × 192 bytes    (0.1%)
+    44,939 × 384 bytes    (0.1%)
+    44,384 × 768 bytes    (0.1%)
+    44,142 × 1536 bytes   (0.1%)
+    44,118 × 3072 bytes   (0.1%)
+    44,056 × 6144 bytes   (0.1%)
+  
+  Distribution: EXTREMELY UNIFORM - 97.6% of allocations are 3 bytes
+                (from byte.to_string() creating tiny strings like "0", "255")
+
+KEY DIFFERENCES:
+  1. ALLOCATION COUNT: Std-only creates 12x more allocations (45M vs 3.8M)
+  2. SIZE UNIFORMITY: Std-only 97.6% uniform vs GeoJSON highly varied
+  3. DEALLOCATION: Both patterns nearly identical (~100% freed by end)
+  4. SIZE COMPLEXITY: GeoJSON has 872 unique sizes, std-only has 1,101 but 97.6% are one size

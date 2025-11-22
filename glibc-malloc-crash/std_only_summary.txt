@@ -1,0 +1,33 @@
+=== Size Distribution Analysis ===
+Log file: std_only_sizes.log
+Total allocations: 45166826
+
+Size statistics:
+  Min: 1 bytes
+  Max: 14680064 bytes
+  P50 (median): 3 bytes
+  P90: 3 bytes
+  P99: 192 bytes
+  Unique sizes: 1101
+
+Top 20 allocation sizes:
+44097210 3
+  53822 6
+  51500 96
+  46351 32
+  45410 192
+  44939 384
+  44384 768
+  44142 1536
+  44118 3072
+  44056 6144
+  44054 12288
+  44049 24576
+  37428 56
+  36165 24
+  34039 576
+  32206 10
+  30763 264
+  29471 4
+  26706 16
+  25244 8
