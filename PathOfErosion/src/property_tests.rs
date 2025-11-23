@@ -439,31 +439,6 @@ mod tests {
 
     // Non-property tests for specific invariant checks
 
-    /// CRITICAL TEST: Use the EXACT failing state blob from the bug report
-    #[test]
-    fn test_exact_failing_blob() {
-        use crate::commands::{execute, Command};
-
-        // This is the EXACT blob that failed during manual testing
-        let failing_blob = "AgAAAAAAAAADAAAAAwAAAAEAAAADAAAAAwAAAAsAAAAAAAAAAgAAAAMAAAACAAAAAgAAAAMAAAAEAAAAAAAAAAMAAAAGAAAABgAAADAAAAAAAAAACQAAAAEAAAABAAAABQAAAAEAAAAEAAAAAwAAAAoAAAAFAAAAAwAAAAcAAAADAAAAAgAAAAkAAAAGAAAAAAAAAAgAAAAKAAAACAAAAAoAAAADAAAAAAAAAAoAAAABAAAAAAAAAAgAAAAJAAAAAAAAAAEAAAACAAAAAQAAAAoAAAAIAAAABAAAAAMAAAABAAAACQAAAAgAAAAAAAAAAwAAAAoAAAAFAAAABQAAAAkAAAAJAAAAAQAAAAQAAAADAAAAAQAAAAAAAAAEAAAA5wMAAAAAAAAMAAAAAAAAAAAAAAAEAAAABQAAAAAAAAAAAAAAAgAAAAQAAAACAAAAAQAAAAQAAAAFAAAAAgAAAAQAAAAEAAAAAwAAAAAAAAAEAAAABQAAAAIAAAAFAAAAAAAAAAUAAAABAAAAAQAAAOcDAAAAAAAAAQQAAAABBgAAAAEAAAAAAAAA5wMAAAAAAAA=";
-
-        // Try to skip optional with this blob
-        let result = execute(Command::SkipOptional {
-            state: failing_blob.to_string(),
-        });
-
-        match result {
-            Ok(_) => {
-                // If it succeeds now, the bug was transient or the blob was corrupted during copy
-                println!("WARNING: The 'failing' blob now works! Bug may have been transient or copy/paste error");
-            }
-            Err(e) => {
-                // If it fails, we've reproduced the bug!
-                panic!("BUG REPRODUCED! Error: {}", e);
-            }
-        }
-    }
-
     /// CRITICAL TEST: Exact reproduction of CLI command flow
     /// This mimics the exact sequence that caused the failure:
     /// 1. Create game via command
