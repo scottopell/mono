@@ -37,13 +37,13 @@ impl Position {
     /// Get the direction needed to reach another position (if adjacent)
     pub fn direction_to(&self, other: Position) -> Option<Direction> {
         if self.x == other.x && self.y == other.y - 1 {
-            Some(Direction::North)
+            Some(Direction::South)  // Fixed: other has smaller y (above), we go South to reach it
         } else if self.x == other.x && self.y == other.y + 1 {
-            Some(Direction::South)
+            Some(Direction::North)  // Fixed: other has larger y (below), we go North to reach it
         } else if self.x == other.x + 1 && self.y == other.y {
-            Some(Direction::East)
+            Some(Direction::West)   // Fixed: other has larger x (right), we go West to reach it
         } else if self.x == other.x - 1 && self.y == other.y {
-            Some(Direction::West)
+            Some(Direction::East)   // Fixed: other has smaller x (left), we go East to reach it
         } else {
             None
         }

@@ -29,9 +29,13 @@ pub struct PlacementResult {
 impl Game {
     /// Create a new game
     pub fn new(width: i32, height: i32, seed: u64) -> Self {
-        let board = Board::new(width, height);
+        let mut board = Board::new(width, height);
         let mut deck = Deck::new(seed);
-        let hazards = Hazards::generate(seed, Position::new(width / 2, height / 2), None, width, height, 12);
+        let center = Position::new(width / 2, height / 2);
+        let hazards = Hazards::generate(seed, center, None, width, height, 12);
+
+        // Place START tile at center (per GAME.md line 76)
+        board.place_tile(center, TileType::START, 0);
 
         let forced_card = deck.draw_card();
         let optional_card = deck.draw_card();
@@ -257,20 +261,22 @@ mod tests {
     #[test]
     fn test_place_forced_card() {
         let mut game = Game::new(20, 20, 42);
-        let center = Position::new(10, 10);
+        // Center now has START tile, place adjacent to it
+        let adjacent = Position::new(10, 11);
 
-        let result = game.place_forced_card(center);
-        assert!(result.success);
-        assert!(game.board.is_occupied(center));
+        let result = game.place_forced_card(adjacent);
+        assert!(result.success, "Placement should succeed: {}", result.message);
+        assert!(game.board.is_occupied(adjacent));
         assert_eq!(game.phase, GamePhase::PlacingOptionalCard);
     }
 
     #[test]
     fn test_skip_optional_card() {
         let mut game = Game::new(20, 20, 42);
-        let center = Position::new(10, 10);
+        // Center now has START tile, place adjacent to it
+        let adjacent = Position::new(10, 11);
 
-        game.place_forced_card(center);
+        game.place_forced_card(adjacent);
         game.skip_optional_card();
 
         assert_eq!(game.turn, 1);
