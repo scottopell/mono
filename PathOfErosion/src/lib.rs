@@ -4,6 +4,9 @@ pub mod board;
 pub mod deck;
 pub mod hazards;
 pub mod validation;
+pub mod renderer;
+pub mod json_state;
+pub mod commands;
 
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
