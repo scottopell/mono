@@ -1,0 +1,21 @@
+# Proptest configuration
+# Run significantly more cases to catch non-deterministic bugs
+
+# Number of test cases to generate for each property test
+# Default is 256, we'll use 10000 to catch rare edge cases
+cases = 10000
+
+# Maximum number of local rejects before giving up
+# Increase to allow more filtering
+max_local_rejects = 100000
+
+# Maximum number of global rejects before giving up
+max_global_rejects = 10000
+
+# Maximum size of generated values
+# This affects things like Vec lengths, string sizes, etc.
+max_shrink_iters = 10000
+
+# Timeout for tests (in milliseconds)
+# Increase for more thorough shrinking
+timeout = 60000

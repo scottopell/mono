@@ -12,6 +12,41 @@ mod tests {
         (0i32..20, 0i32..20).prop_map(|(x, y)| Position::new(x, y))
     }
 
+    // Strategy for generating edge case board sizes (where bugs were found)
+    fn edge_case_board_size_strategy() -> impl Strategy<Value = (i32, i32)> {
+        prop_oneof![
+            Just((5, 5)),   // Minimum size
+            Just((6, 6)),   // Where bug was found
+            Just((7, 7)),
+            Just((8, 8)),
+            Just((10, 10)), // Medium
+        ]
+    }
+
+    // Strategy for generating game operation sequences
+    #[derive(Debug, Clone)]
+    enum GameOp {
+        PlaceForced(i32, i32),
+        PlaceOptional(i32, i32),
+        SkipOptional,
+    }
+
+    fn game_op_strategy(width: i32, height: i32) -> impl Strategy<Value = GameOp> {
+        let center_x = width / 2;
+        let center_y = height / 2;
+
+        prop_oneof![
+            // Try positions around center
+            (0i32..3, 0i32..3).prop_map(move |(dx, dy)| {
+                GameOp::PlaceForced(center_x + dx - 1, center_y + dy - 1)
+            }),
+            (0i32..3, 0i32..3).prop_map(move |(dx, dy)| {
+                GameOp::PlaceOptional(center_x + dx - 1, center_y + dy - 1)
+            }),
+            Just(GameOp::SkipOptional),
+        ]
+    }
+
     // Strategy for generating tile types (excluding START/END)
     #[allow(dead_code)]
     fn tile_type_strategy() -> impl Strategy<Value = TileType> {
@@ -286,9 +321,188 @@ mod tests {
             game.skip_optional_card();
             prop_assert_eq!(game.phase, crate::types::GamePhase::PlacingForcedCard);
         }
+
+        /// STRESS TEST: Complex game operation sequences with serialization
+        /// This test performs many random operations and serializes at each step
+        /// to catch non-deterministic serialization bugs
+        #[test]
+        fn prop_serialization_stress_test(
+            (width, height) in edge_case_board_size_strategy(),
+            seed in any::<u64>(),
+            operation_count in 0usize..20
+        ) {
+            use crate::json_state::{to_json, deserialize_game_state};
+
+            let mut game = Game::new(width, height, seed);
+            let center_x = width / 2;
+            let center_y = height / 2;
+
+            // Test serialization before any operations
+            let json = to_json(&game).expect("Initial serialization should succeed");
+            let _ = deserialize_game_state(&json.state_blob)
+                .expect("Initial deserialization should succeed");
+
+            for i in 0..operation_count {
+                // Perform various operations
+                let op_type = i % 3;
+                match op_type {
+                    0 => {
+                        // Try forced placement
+                        let offset_x = ((i / 3) as i32 % 3) - 1;
+                        let offset_y = ((i / 9) as i32 % 3) - 1;
+                        let pos = Position::new(center_x + offset_x, center_y + offset_y);
+                        let _ = game.place_forced_card(pos);
+                    }
+                    1 => {
+                        // Try optional placement
+                        let offset_x = ((i / 3) as i32 % 3) - 1;
+                        let offset_y = ((i / 9) as i32 % 3) - 1;
+                        let pos = Position::new(center_x + offset_x, center_y + offset_y);
+                        let _ = game.place_optional_card(pos);
+                    }
+                    _ => {
+                        // Skip optional
+                        game.skip_optional_card();
+                    }
+                }
+
+                // Serialize after EVERY operation
+                let json = to_json(&game).expect(&format!(
+                    "Serialization failed after operation {} with width={}, height={}, seed={}",
+                    i, width, height, seed
+                ));
+
+                // Deserialize and verify
+                let restored = deserialize_game_state(&json.state_blob).expect(&format!(
+                    "Deserialization failed after operation {} with width={}, height={}, seed={}. State blob length: {}",
+                    i, width, height, seed, json.state_blob.len()
+                ));
+
+                // Verify critical properties
+                prop_assert_eq!(game.turn, restored.turn, "Turn mismatch after operation {}", i);
+                prop_assert_eq!(game.phase, restored.phase, "Phase mismatch after operation {}", i);
+                prop_assert_eq!(
+                    game.board.all_tiles().len(),
+                    restored.board.all_tiles().len(),
+                    "Tile count mismatch after operation {}",
+                    i
+                );
+            }
+        }
+
+        /// STRESS TEST: Edge cases with specific problematic seeds
+        #[test]
+        fn prop_serialization_problematic_seeds(
+            seed in prop_oneof![
+                Just(0u64),
+                Just(42u64),
+                Just(123u64),
+                Just(999u64),     // Seed where bug was observed
+                Just(12345u64),
+                Just(u64::MAX),
+                Just(u64::MAX - 1),
+            ]
+        ) {
+            use crate::json_state::{to_json, deserialize_game_state};
+
+            // Test with the exact size where bug was found
+            let mut game = Game::new(6, 6, seed);
+
+            // Initial serialization
+            let json = to_json(&game).expect(&format!("Initial serialization failed for seed {}", seed));
+            let _ = deserialize_game_state(&json.state_blob)
+                .expect(&format!("Initial deserialization failed for seed {}", seed));
+
+            // Place forced card
+            let _ = game.place_forced_card(Position::new(2, 3));
+
+            // Serialize after placement
+            let json = to_json(&game).expect(&format!("Post-placement serialization failed for seed {}", seed));
+            let restored = deserialize_game_state(&json.state_blob)
+                .expect(&format!("Post-placement deserialization failed for seed {}", seed));
+
+            prop_assert_eq!(game.turn, restored.turn);
+            prop_assert_eq!(game.phase, restored.phase);
+
+            // Skip optional - THIS IS WHERE THE BUG WAS OBSERVED
+            game.skip_optional_card();
+
+            // Serialize after skip - critical test
+            let json = to_json(&game).expect(&format!("Post-skip serialization failed for seed {}", seed));
+            let restored = deserialize_game_state(&json.state_blob)
+                .expect(&format!("CRITICAL: Post-skip deserialization failed for seed {}! This is the bug!", seed));
+
+            prop_assert_eq!(game.turn, restored.turn);
+            prop_assert_eq!(game.phase, restored.phase);
+        }
     }
 
     // Non-property tests for specific invariant checks
+
+    /// MANUAL STRESS TEST: Run many iterations explicitly
+    /// This doesn't rely on proptest config - runs 10,000 iterations manually
+    #[test]
+    fn test_serialization_manual_stress() {
+        use crate::json_state::{to_json, deserialize_game_state};
+        use rand::Rng;
+
+        let mut rng = rand::thread_rng();
+
+        for iteration in 0..10_000 {
+            let seed = rng.gen::<u64>();
+            let size = rng.gen_range(5..12);
+
+            let mut game = Game::new(size, size, seed);
+            let center = size / 2;
+
+            // Initial serialization
+            let json = to_json(&game).expect(&format!(
+                "Iteration {}: Initial serialization failed for size={}, seed={}",
+                iteration, size, seed
+            ));
+            deserialize_game_state(&json.state_blob).expect(&format!(
+                "Iteration {}: Initial deserialization failed for size={}, seed={}",
+                iteration, size, seed
+            ));
+
+            // Random operations
+            let op_count = rng.gen_range(1..10);
+            for op in 0..op_count {
+                let op_type = rng.gen_range(0..3);
+                match op_type {
+                    0 => {
+                        let x = center + rng.gen_range(-1..2);
+                        let y = center + rng.gen_range(-1..2);
+                        let _ = game.place_forced_card(Position::new(x, y));
+                    }
+                    1 => {
+                        let x = center + rng.gen_range(-1..2);
+                        let y = center + rng.gen_range(-1..2);
+                        let _ = game.place_optional_card(Position::new(x, y));
+                    }
+                    _ => {
+                        game.skip_optional_card();
+                    }
+                }
+
+                // Serialize after each operation
+                let json = to_json(&game).expect(&format!(
+                    "Iteration {}, op {}: Serialization failed for size={}, seed={}",
+                    iteration, op, size, seed
+                ));
+                deserialize_game_state(&json.state_blob).expect(&format!(
+                    "Iteration {}, op {}: Deserialization failed for size={}, seed={}, blob_len={}",
+                    iteration, op, size, seed, json.state_blob.len()
+                ));
+            }
+
+            if iteration % 1000 == 0 {
+                println!("Completed {} iterations...", iteration);
+            }
+        }
+
+        println!("Successfully completed 10,000 serialization iterations!");
+    }
 
     /// Regression test for serialization bug found with seed 999
     /// This test reproduces the exact scenario that caused deserialization failure
