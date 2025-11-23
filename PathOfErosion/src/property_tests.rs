@@ -23,30 +23,6 @@ mod tests {
         ]
     }
 
-    // Strategy for generating game operation sequences
-    #[derive(Debug, Clone)]
-    enum GameOp {
-        PlaceForced(i32, i32),
-        PlaceOptional(i32, i32),
-        SkipOptional,
-    }
-
-    fn game_op_strategy(width: i32, height: i32) -> impl Strategy<Value = GameOp> {
-        let center_x = width / 2;
-        let center_y = height / 2;
-
-        prop_oneof![
-            // Try positions around center
-            (0i32..3, 0i32..3).prop_map(move |(dx, dy)| {
-                GameOp::PlaceForced(center_x + dx - 1, center_y + dy - 1)
-            }),
-            (0i32..3, 0i32..3).prop_map(move |(dx, dy)| {
-                GameOp::PlaceOptional(center_x + dx - 1, center_y + dy - 1)
-            }),
-            Just(GameOp::SkipOptional),
-        ]
-    }
-
     // Strategy for generating tile types (excluding START/END)
     #[allow(dead_code)]
     fn tile_type_strategy() -> impl Strategy<Value = TileType> {
@@ -251,7 +227,7 @@ mod tests {
             let initial_total = game.deck.total_cards();
 
             for _ in 0..operations {
-                if let Some(card) = game.current_forced_card {
+                if let Some(_card) = game.current_forced_card {
                     game.place_forced_card(Position::new(10, 10));
                 }
                 game.skip_optional_card();
@@ -434,6 +410,80 @@ mod tests {
 
             prop_assert_eq!(game.turn, restored.turn);
             prop_assert_eq!(game.phase, restored.phase);
+        }
+
+        /// CRITICAL TEST: Command interface with state blob round-trips
+        /// This tests the ACTUAL code path that failed during manual testing
+        /// All operations go through Command::execute() with state blobs
+        #[test]
+        fn prop_command_interface_serialization(
+            (width, height) in edge_case_board_size_strategy(),
+            seed in any::<u64>(),
+            operation_count in 1usize..10
+        ) {
+            use crate::commands::{execute, Command};
+
+            // Step 1: Create game via Command (not Game::new!)
+            let result = execute(Command::NewGame {
+                width,
+                height,
+                seed: Some(seed),
+            }).expect("NewGame should never fail with valid dimensions");
+
+            let mut current_blob = result.new_state.state_blob;
+            let center_x = width / 2;
+            let center_y = height / 2;
+
+            // Step 2: Execute operations via Command interface with state blobs
+            for i in 0..operation_count {
+                // Generate operation based on iteration (deterministic given seed/iteration)
+                let op_type = i % 3;
+                let offset_x = ((i / 3) % 3) as i32 - 1;
+                let offset_y = ((i / 9) % 3) as i32 - 1;
+                let x = center_x + offset_x;
+                let y = center_y + offset_y;
+
+                let result = match op_type {
+                    0 => {
+                        execute(Command::PlaceForcedCard {
+                            state: current_blob.clone(),
+                            x,
+                            y,
+                        }).expect(&format!("PlaceForced should not fail deserialization at op {}", i))
+                    }
+                    1 => {
+                        execute(Command::PlaceOptionalCard {
+                            state: current_blob.clone(),
+                            x,
+                            y,
+                        }).expect(&format!("PlaceOptional should not fail deserialization at op {}", i))
+                    }
+                    _ => {
+                        // THIS IS THE CRITICAL PATH - where deserialization bug occurred
+                        execute(Command::SkipOptional {
+                            state: current_blob.clone(),
+                        }).expect(&format!(
+                            "CRITICAL: SkipOptional deserialization failed at op {} (seed={}, size={}x{}, blob_len={})",
+                            i, seed, width, height, current_blob.len()
+                        ))
+                    }
+                };
+
+                // Update blob for next operation
+                current_blob = result.new_state.state_blob;
+
+                // Verify we can deserialize the new blob immediately
+                use crate::json_state::deserialize_game_state;
+                let deserialized = deserialize_game_state(&current_blob).expect(&format!(
+                    "Failed to deserialize state after op {} (seed={}, size={}x{})",
+                    i, seed, width, height
+                ));
+
+                // Verify basic invariants
+                prop_assert!(deserialized.turn <= 100, "Turn counter out of range");
+                prop_assert_eq!(deserialized.board.width, width, "Board width changed");
+                prop_assert_eq!(deserialized.board.height, height, "Board height changed");
+            }
         }
     }
 
