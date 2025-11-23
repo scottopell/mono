@@ -2,40 +2,59 @@
 //  Snippet.swift
 //  SnippetManager
 //
-//  Shared data model for snippets
+//  Compatibility wrapper around ClipKitItemModel
 //
 
 import Foundation
+import ClipKitCore
 
 // REQ-SM-018: Store snippet metadata including type and expiration
-struct Snippet: Codable, Identifiable {
-    let id: UUID
-    let text: String
-    let timestamp: Date
-    let isTimed: Bool
-    let expirationDate: Date?
+/// Compatibility wrapper around ClipKitItemModel for UI layer
+struct Snippet: Identifiable {
+    // The underlying ClipKit model
+    private let item: ClipKitItemModel
 
+    // Public interface matching the old Snippet struct
+    var id: UUID { item.id }
+    var text: String { item.textRepresentation ?? "" }
+    var timestamp: Date { item.createdAt }
+    var isTimed: Bool { item.lifetimeType == .timed }
+    var expirationDate: Date? { item.expirationDate }
+
+    // Initialize from ClipKitItemModel
+    init(item: ClipKitItemModel) {
+        self.item = item
+    }
+
+    // Initialize with legacy API (for backwards compatibility)
     init(id: UUID = UUID(), text: String, timestamp: Date = Date(), isTimed: Bool = false) {
-        self.id = id
-        self.text = text
-        self.timestamp = timestamp
-        self.isTimed = isTimed
-        // REQ-SM-018: Timed snippets expire 7 days after creation
-        self.expirationDate = isTimed ? timestamp.addingTimeInterval(7 * 24 * 60 * 60) : nil
+        var clipKitItem = ClipKitItemModel.snippet(
+            text: text,
+            isTimed: isTimed,
+            saveMethod: .manual,
+            platform: .iOS
+        )
+        // Override ID and timestamp to match legacy behavior
+        clipKitItem.id = id
+        clipKitItem.createdAt = timestamp
+        self.item = clipKitItem
     }
 
-    // Custom decoding to support backwards compatibility with existing snippets
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(UUID.self, forKey: .id)
-        text = try container.decode(String.self, forKey: .text)
-        timestamp = try container.decode(Date.self, forKey: .timestamp)
-        // Default to regular snippet if fields don't exist (backwards compatibility)
-        isTimed = try container.decodeIfPresent(Bool.self, forKey: .isTimed) ?? false
-        expirationDate = try container.decodeIfPresent(Date.self, forKey: .expirationDate)
+    // Access underlying ClipKit item for storage operations
+    var clipKitItem: ClipKitItemModel {
+        item
     }
+}
 
-    private enum CodingKeys: String, CodingKey {
-        case id, text, timestamp, isTimed, expirationDate
+// Extension to convert arrays
+extension Array where Element == ClipKitItemModel {
+    func toSnippets() -> [Snippet] {
+        map { Snippet(item: $0) }
+    }
+}
+
+extension Array where Element == Snippet {
+    func toClipKitItems() -> [ClipKitItemModel] {
+        map { $0.clipKitItem }
     }
 }

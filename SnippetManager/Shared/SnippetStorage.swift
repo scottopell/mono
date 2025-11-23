@@ -2,76 +2,92 @@
 //  SnippetStorage.swift
 //  SnippetManager
 //
-//  Manages snippet storage using App Groups
+//  Manages snippet storage using ClipKitCore
 //
 
 import Foundation
+import ClipKitCore
 
 class SnippetStorage {
     // IMPORTANT: Replace this with your actual App Group ID
     // Format: group.com.yourcompany.snippetmanager
     static let appGroupID = "group.com.yourcompany.snippetmanager"
-    private static let snippetsKey = "saved_snippets"
 
-    private let userDefaults: UserDefaults?
+    private static var isConfigured = false
+    private static var isMigrated = false
 
     init() {
-        self.userDefaults = UserDefaults(suiteName: SnippetStorage.appGroupID)
+        // Configure ClipKitCore on first use
+        Self.configureIfNeeded()
+        // Run migration on first use
+        Self.migrateIfNeeded()
+    }
+
+    private static func configureIfNeeded() {
+        guard !isConfigured else { return }
+        ClipKitStorageManager.shared.configureAppGroup(appGroupID)
+        isConfigured = true
+        print("ClipKitCore configured with App Group: \(appGroupID)")
+    }
+
+    private static func migrateIfNeeded() {
+        guard !isMigrated else { return }
+        isMigrated = true
+
+        let migration = ClipKitMigration(appGroupID: appGroupID)
+
+        if !migration.isMigrationCompleted() {
+            print("Starting UserDefaults -> ClipKitCore migration...")
+            migration.migrate { success, count in
+                if success {
+                    print("Migration successful: \(count) snippets migrated")
+                } else {
+                    print("Migration failed")
+                }
+            }
+        }
     }
 
     // Save a new snippet
     func saveSnippet(_ snippet: Snippet) {
-        var snippets = loadSnippets()
-        snippets.insert(snippet, at: 0) // Add to beginning (newest first)
-        saveSnippets(snippets)
+        ClipKitStorageManager.shared.saveItem(snippet.clipKitItem) { success in
+            if !success {
+                print("Failed to save snippet: \(snippet.id)")
+            }
+        }
     }
 
     // Load all snippets
-    // REQ-SM-005: Filter out expired timed snippets
+    // REQ-SM-005: Filter out expired timed snippets (handled by ClipKitCore)
     func loadSnippets() -> [Snippet] {
-        guard let userDefaults = userDefaults,
-              let data = userDefaults.data(forKey: SnippetStorage.snippetsKey) else {
-            return []
+        // This is synchronous for backwards compatibility
+        // We'll use a semaphore to wait for the async operation
+        var result: [Snippet] = []
+        let semaphore = DispatchSemaphore(value: 0)
+
+        ClipKitStorageManager.shared.loadItems(itemType: .snippet) { items in
+            result = items.toSnippets()
+            semaphore.signal()
         }
 
-        do {
-            let snippets = try JSONDecoder().decode([Snippet].self, from: data)
-            // Filter out expired timed snippets
-            let now = Date()
-            return snippets.filter { snippet in
-                // Keep regular snippets (not timed)
-                if !snippet.isTimed {
-                    return true
-                }
-                // Keep timed snippets that haven't expired yet
-                if let expirationDate = snippet.expirationDate {
-                    return expirationDate > now
-                }
-                // If it's timed but has no expiration date (shouldn't happen), keep it
-                return true
-            }
-        } catch {
-            print("Error decoding snippets: \(error)")
-            return []
-        }
+        // Wait for completion (with timeout)
+        _ = semaphore.wait(timeout: .now() + 5.0)
+        return result
     }
 
-    // Save snippets array
-    private func saveSnippets(_ snippets: [Snippet]) {
-        guard let userDefaults = userDefaults else { return }
-
-        do {
-            let data = try JSONEncoder().encode(snippets)
-            userDefaults.set(data, forKey: SnippetStorage.snippetsKey)
-        } catch {
-            print("Error encoding snippets: \(error)")
+    // Load snippets asynchronously (recommended for new code)
+    func loadSnippets(completion: @escaping ([Snippet]) -> Void) {
+        ClipKitStorageManager.shared.loadItems(itemType: .snippet) { items in
+            completion(items.toSnippets())
         }
     }
 
     // Delete a snippet
     func deleteSnippet(_ snippet: Snippet) {
-        var snippets = loadSnippets()
-        snippets.removeAll { $0.id == snippet.id }
-        saveSnippets(snippets)
+        ClipKitStorageManager.shared.deleteItem(snippet.clipKitItem) { success in
+            if !success {
+                print("Failed to delete snippet: \(snippet.id)")
+            }
+        }
     }
 }
