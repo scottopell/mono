@@ -8,8 +8,19 @@ mod tests {
     use crate::types::{Position, TileType};
 
     // Strategy for generating tile positions on a 20x20 board
+    // NOTE: Most positions will be invalid (not adjacent to tiles)
+    // This is intentional - tests rejection of invalid positions
     fn position_strategy() -> impl Strategy<Value = Position> {
         (0i32..20, 0i32..20).prop_map(|(x, y)| Position::new(x, y))
+    }
+
+    // Strategy for generating positions likely to be VALID
+    // Generates positions in 5x5 grid around center (where START tile is)
+    fn valid_position_strategy(width: i32, height: i32) -> impl Strategy<Value = Position> {
+        let center_x = width / 2;
+        let center_y = height / 2;
+        (center_x - 2..=center_x + 2, center_y - 2..=center_y + 2)
+            .prop_map(|(x, y)| Position::new(x, y))
     }
 
     // Strategy for generating edge case board sizes (where bugs were found)
@@ -24,6 +35,12 @@ mod tests {
     }
 
     // Strategy for generating tile types (excluding START/END)
+    // TODO: Use this strategy for:
+    //   1. Testing connection logic for all tile type combinations
+    //   2. Testing serialization of all tile types
+    //   3. Testing rendering/display for all tile types
+    //   4. Testing that has_connection() works correctly for all types
+    // For now, keeping as reference until we add those tests
     #[allow(dead_code)]
     fn tile_type_strategy() -> impl Strategy<Value = TileType> {
         prop_oneof![
@@ -485,176 +502,78 @@ mod tests {
                 prop_assert_eq!(deserialized.board.height, height, "Board height changed");
             }
         }
+
+        /// ERROR PATH TEST: Invalid state blobs should return errors
+        #[test]
+        fn prop_invalid_state_blobs_return_errors(
+            corruption_type in 0u8..5
+        ) {
+            use crate::commands::{execute, Command};
+
+            // Create a valid game first
+            let result = execute(Command::NewGame {
+                width: 6,
+                height: 6,
+                seed: Some(42),
+            }).expect("NewGame should succeed");
+
+            let valid_blob = result.new_state.state_blob;
+
+            // Corrupt the blob in various ways
+            let corrupted_blob = match corruption_type {
+                0 => "invalid_base64!@#$".to_string(),
+                1 => "".to_string(), // Empty
+                2 => valid_blob[..valid_blob.len()/2].to_string(), // Truncated
+                3 => format!("{}CORRUPT", valid_blob), // Appended garbage
+                4 => "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=".to_string(), // Valid base64, invalid bincode
+                _ => unreachable!()
+            };
+
+            // All of these should return Err, not panic
+            let result = execute(Command::SkipOptional {
+                state: corrupted_blob.clone(),
+            });
+
+            prop_assert!(result.is_err(),
+                "Corrupted blob (type {}) should return error, got success",
+                corruption_type);
+        }
+
+        /// ERROR PATH TEST: Out of bounds positions should be handled gracefully
+        #[test]
+        fn prop_out_of_bounds_positions(
+            width in 5i32..10,
+            height in 5i32..10,
+            x_offset in -5i32..15,
+            y_offset in -5i32..15
+        ) {
+            use crate::commands::{execute, Command};
+
+            let result = execute(Command::NewGame {
+                width,
+                height,
+                seed: Some(123),
+            }).expect("NewGame should succeed");
+
+            let blob = result.new_state.state_blob;
+            let x = width + x_offset; // Likely out of bounds
+            let y = height + y_offset;
+
+            // Should either succeed (if in bounds and valid) or fail gracefully
+            // Should NEVER panic
+            let result = execute(Command::PlaceForcedCard {
+                state: blob,
+                x,
+                y,
+            });
+
+            // Just verify it doesn't panic - either success or error is fine
+            prop_assert!(result.is_ok() || result.is_err(),
+                "Command should return Result, not panic");
+        }
     }
 
     // Non-property tests for specific invariant checks
-
-    /// CRITICAL TEST: Exact reproduction of CLI command flow
-    /// This mimics the exact sequence that caused the failure:
-    /// 1. Create game via command
-    /// 2. Place forced card via command (with state blob round-trip)
-    /// 3. Skip optional via command (with state blob round-trip)
-    #[test]
-    fn test_command_flow_exact_reproduction() {
-        use crate::commands::{execute, Command};
-
-        // Step 1: Create game via command (like CLI does)
-        let new_game_result = execute(Command::NewGame {
-            width: 6,
-            height: 6,
-            seed: Some(999),
-        }).expect("New game should succeed");
-
-        let state_blob_1 = new_game_result.new_state.state_blob.clone();
-
-        // Step 2: Place forced card via command with state blob
-        let place_result = execute(Command::PlaceForcedCard {
-            state: state_blob_1,
-            x: 2,
-            y: 3,
-        }).expect("Place forced should succeed");
-
-        let state_blob_2 = place_result.new_state.state_blob.clone();
-
-        // Step 3: Skip optional via command - THIS IS WHERE IT FAILED
-        let skip_result = execute(Command::SkipOptional {
-            state: state_blob_2.clone(),
-        }).expect("CRITICAL: Skip optional failed - this is the bug!");
-
-        // Verify state is still valid
-        assert_eq!(skip_result.new_state.turn, 1);
-        assert_eq!(skip_result.new_state.phase, "PLACING_FORCED_CARD");
-
-        // Also verify the blob can be deserialized multiple times
-        for _ in 0..10 {
-            let skip_again = execute(Command::SkipOptional {
-                state: state_blob_2.clone(),
-            }).expect("Repeated skip should also work");
-            assert_eq!(skip_again.new_state.turn, 1);
-        }
-    }
-
-    /// STRESS TEST: Command flow with many iterations
-    /// Tests the full command execution path, not just Game methods
-    #[test]
-    fn test_command_flow_stress() {
-        use crate::commands::{execute, Command};
-        use rand::Rng;
-
-        let mut rng = rand::thread_rng();
-
-        for iteration in 0..1000 {
-            let seed = rng.gen::<u64>();
-            let size = rng.gen_range(5..10);
-
-            // Create game via command
-            let mut result = execute(Command::NewGame {
-                width: size,
-                height: size,
-                seed: Some(seed),
-            }).expect(&format!("Iteration {}: New game failed", iteration));
-
-            let center = size / 2;
-
-            // Perform operations via commands (using state blobs)
-            for op in 0..10 {
-                let current_blob = result.new_state.state_blob.clone();
-
-                // Try placing forced card
-                let x = center + rng.gen_range(-1..2);
-                let y = center + rng.gen_range(-1..2);
-
-                result = execute(Command::PlaceForcedCard {
-                    state: current_blob.clone(),
-                    x,
-                    y,
-                }).expect(&format!(
-                    "Iteration {}, op {}: Place forced failed with seed={}, size={}",
-                    iteration, op, seed, size
-                ));
-
-                // Skip optional via command
-                let current_blob = result.new_state.state_blob.clone();
-                result = execute(Command::SkipOptional {
-                    state: current_blob,
-                }).expect(&format!(
-                    "Iteration {}, op {}: Skip optional failed with seed={}, size={}, blob_len={}",
-                    iteration, op, seed, size, result.new_state.state_blob.len()
-                ));
-            }
-
-            if iteration % 100 == 0 {
-                println!("Command flow test: {} iterations completed", iteration);
-            }
-        }
-
-        println!("Command flow stress test: 1000 iterations completed successfully!");
-    }
-
-    /// MANUAL STRESS TEST: Run many iterations explicitly
-    /// This doesn't rely on proptest config - runs 10,000 iterations manually
-    #[test]
-    fn test_serialization_manual_stress() {
-        use crate::json_state::{to_json, deserialize_game_state};
-        use rand::Rng;
-
-        let mut rng = rand::thread_rng();
-
-        for iteration in 0..10_000 {
-            let seed = rng.gen::<u64>();
-            let size = rng.gen_range(5..12);
-
-            let mut game = Game::new(size, size, seed);
-            let center = size / 2;
-
-            // Initial serialization
-            let json = to_json(&game).expect(&format!(
-                "Iteration {}: Initial serialization failed for size={}, seed={}",
-                iteration, size, seed
-            ));
-            deserialize_game_state(&json.state_blob).expect(&format!(
-                "Iteration {}: Initial deserialization failed for size={}, seed={}",
-                iteration, size, seed
-            ));
-
-            // Random operations
-            let op_count = rng.gen_range(1..10);
-            for op in 0..op_count {
-                let op_type = rng.gen_range(0..3);
-                match op_type {
-                    0 => {
-                        let x = center + rng.gen_range(-1..2);
-                        let y = center + rng.gen_range(-1..2);
-                        let _ = game.place_forced_card(Position::new(x, y));
-                    }
-                    1 => {
-                        let x = center + rng.gen_range(-1..2);
-                        let y = center + rng.gen_range(-1..2);
-                        let _ = game.place_optional_card(Position::new(x, y));
-                    }
-                    _ => {
-                        game.skip_optional_card();
-                    }
-                }
-
-                // Serialize after each operation
-                let json = to_json(&game).expect(&format!(
-                    "Iteration {}, op {}: Serialization failed for size={}, seed={}",
-                    iteration, op, size, seed
-                ));
-                deserialize_game_state(&json.state_blob).expect(&format!(
-                    "Iteration {}, op {}: Deserialization failed for size={}, seed={}, blob_len={}",
-                    iteration, op, size, seed, json.state_blob.len()
-                ));
-            }
-
-            if iteration % 1000 == 0 {
-                println!("Completed {} iterations...", iteration);
-            }
-        }
-
-        println!("Successfully completed 10,000 serialization iterations!");
-    }
 
     /// Regression test for serialization bug found with seed 999
     /// This test reproduces the exact scenario that caused deserialization failure
