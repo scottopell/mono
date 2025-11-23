@@ -26,65 +26,26 @@ SnippetManager uses a shared data architecture where three iOS components (main 
 
 **Performance:** Synchronous UserDefaults reads (<10ms typical). No network calls. Simple JSON decode scales to 100+ snippets easily. Filter-on-read approach adds negligible overhead.
 
-## ClipKitCore Migration Status
+## ClipKitCore Integration
 
-**Migration Date:** 2025-11-23  
 **Status:** ✅ Complete
 
-SnippetManager has been successfully migrated to use **ClipKitCore**, a unified cross-platform data model and storage layer shared with sPaperClip (macOS).
+SnippetManager uses **ClipKitCore**, a unified cross-platform data model shared with sPaperClip (macOS).
 
-### Migration Benefits
+**Benefits:**
+- Core Data persistence (more reliable than UserDefaults)
+- 2-3x faster performance for large collections
+- Full-text search capability
+- Cross-platform ready (iOS + macOS)
+- Unlimited storage (no UserDefaults size limits)
 
-✅ **Core Data Persistence** - Replaced UserDefaults with enterprise-grade Core Data  
-✅ **Better Performance** - Indexed queries, 2-3x faster for large collections (100+ snippets)  
-✅ **Search Capabilities** - Full-text search across all snippets  
-✅ **Tags Support** - Organize snippets with categories (foundation for future features)  
-✅ **Cross-Platform Ready** - Shared data model enables future macOS version  
-✅ **Automatic Migration** - Existing snippets migrate seamlessly on first launch  
+**Technical Changes:**
+- `Shared/Snippet.swift` - Wrapper around ClipKitItemModel
+- `Shared/SnippetStorage.swift` - Uses ClipKitStorageManager with Core Data
+- All UI components unchanged (zero breaking changes)
 
-### Technical Changes
+**Setup:** See `SETUP.md` for Xcode configuration instructions.
 
-**Updated Files:**
-- `Shared/Snippet.swift` - Now a compatibility wrapper around `ClipKitItemModel`
-- `Shared/SnippetStorage.swift` - Uses `ClipKitStorageManager` with Core Data backend
-
-**Added Files:**
-- `Shared/ClipKitMigration.swift` - Automatic UserDefaults → Core Data migration
-- `CLIPKIT_MIGRATION.md` - Complete setup and troubleshooting guide
-
-**Unchanged:**
-- All UI components work unchanged thanks to compatibility layer
-- No changes to ContentView, ShareView, KeyboardView
-- Same API surface, better backend
-
-### Storage Architecture (Updated)
-
-**Before:** UserDefaults (App Group) → JSON encoding → In-memory filtering  
-**After:** Core Data (SQLite) → Indexed queries → Database-level filtering  
-
-**Data Model:** `ClipKitItem` entity with relationships:
-- `ClipKitContent` - Stores actual text data with UTI format information
-- `ClipKitFormat` - UTI type identifiers for multi-format support
-- `ClipKitSourceApp` - Source application metadata (extensible)
-
-**Migration Process:**
-1. First app launch detects UserDefaults data
-2. Backs up existing data to `saved_snippets_backup_legacy`
-3. Converts each Snippet → ClipKitItemModel → Core Data entity
-4. Preserves IDs, timestamps, and expiration dates
-5. Marks migration complete to prevent re-running
-
-### Verification
-
-All 24 requirements remain satisfied with improved backend:
-
-| Aspect | Before (UserDefaults) | After (Core Data) | Status |
-|--------|----------------------|-------------------|--------|
-| Storage | JSON in UserDefaults | SQLite database | ✅ Migrated |
-| Performance | ~10-50ms load | ~5-30ms load | ✅ Improved |
-| Search | Not available | Full-text search | ✅ New feature |
-| Filtering | In-memory | Database predicates | ✅ Improved |
-| Scalability | ~1000 snippets max | Unlimited | ✅ Improved |
 | Cross-component | App Groups | App Groups + Core Data | ✅ Maintained |
 
 ### Next Steps
