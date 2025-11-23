@@ -31,6 +31,129 @@ mod tests {
     }
 
     proptest! {
+        /// Invariant: Serialization round-trip preserves game state
+        #[test]
+        fn prop_serialization_roundtrip(seed in any::<u64>(), width in 5i32..15, height in 5i32..15) {
+            use crate::json_state::{to_json, deserialize_game_state};
+
+            let game = Game::new(width, height, seed);
+
+            // Serialize and deserialize
+            let json = to_json(&game).expect("Serialization should succeed");
+            let restored = deserialize_game_state(&json.state_blob)
+                .expect("Deserialization should succeed");
+
+            // Verify key properties match
+            prop_assert_eq!(game.turn, restored.turn);
+            prop_assert_eq!(game.phase, restored.phase);
+            prop_assert_eq!(game.board.width, restored.board.width);
+            prop_assert_eq!(game.board.height, restored.board.height);
+            prop_assert_eq!(game.board.all_tiles().len(), restored.board.all_tiles().len());
+        }
+
+        /// Invariant: Serialization works after placing forced card
+        #[test]
+        fn prop_serialization_after_forced_placement(
+            seed in any::<u64>(),
+            width in 5i32..10,
+            height in 5i32..10
+        ) {
+            use crate::json_state::{to_json, deserialize_game_state};
+
+            let mut game = Game::new(width, height, seed);
+
+            // Try to place forced card at a position adjacent to START
+            let center_x = width / 2;
+            let center_y = height / 2;
+
+            // Try positions around center where START is
+            for (dx, dy) in [(1, 0), (0, 1), (-1, 0), (0, -1)] {
+                let pos = Position::new(center_x + dx, center_y + dy);
+                if game.board.in_bounds(pos) {
+                    let _ = game.place_forced_card(pos);
+                    break;
+                }
+            }
+
+            // Serialize and deserialize
+            let json = to_json(&game).expect("Serialization after placement should succeed");
+            let restored = deserialize_game_state(&json.state_blob)
+                .expect("Deserialization after placement should succeed");
+
+            prop_assert_eq!(game.turn, restored.turn);
+            prop_assert_eq!(game.phase, restored.phase);
+            prop_assert_eq!(game.board.all_tiles().len(), restored.board.all_tiles().len());
+        }
+
+        /// Invariant: Serialization works after skipping optional card
+        #[test]
+        fn prop_serialization_after_skip(
+            seed in any::<u64>(),
+            width in 5i32..10,
+            height in 5i32..10
+        ) {
+            use crate::json_state::{to_json, deserialize_game_state};
+
+            let mut game = Game::new(width, height, seed);
+
+            // Place forced card
+            let center_x = width / 2;
+            let center_y = height / 2;
+            let _ = game.place_forced_card(Position::new(center_x + 1, center_y));
+
+            // Skip optional card
+            game.skip_optional_card();
+
+            // Serialize and deserialize
+            let json = to_json(&game).expect("Serialization after skip should succeed");
+            let restored = deserialize_game_state(&json.state_blob)
+                .expect("Deserialization after skip should succeed");
+
+            prop_assert_eq!(game.turn, restored.turn);
+            prop_assert_eq!(game.phase, restored.phase);
+        }
+
+        /// Invariant: Serialization works after multiple operations
+        #[test]
+        fn prop_serialization_after_game_sequence(
+            seed in any::<u64>(),
+            operations in 0usize..10,
+            width in 6i32..12,
+            height in 6i32..12
+        ) {
+            use crate::json_state::{to_json, deserialize_game_state};
+
+            let mut game = Game::new(width, height, seed);
+            let center_x = width / 2;
+            let center_y = height / 2;
+
+            // Perform a sequence of operations
+            for i in 0..operations {
+                // Try to place at various positions
+                let x_offset = (i as i32 % 3) - 1;
+                let y_offset = ((i / 3) as i32 % 3) - 1;
+                let pos = Position::new(center_x + x_offset, center_y + y_offset);
+
+                if game.board.in_bounds(pos) {
+                    let _ = game.place_forced_card(pos);
+                }
+
+                // Serialize mid-sequence
+                let json = to_json(&game).expect("Mid-sequence serialization should succeed");
+                let _ = deserialize_game_state(&json.state_blob)
+                    .expect("Mid-sequence deserialization should succeed");
+
+                game.skip_optional_card();
+
+                // Serialize after skip
+                let json = to_json(&game).expect("Post-skip serialization should succeed");
+                let restored = deserialize_game_state(&json.state_blob)
+                    .expect("Post-skip deserialization should succeed");
+
+                prop_assert_eq!(game.turn, restored.turn);
+            }
+        }
+
         /// Invariant: Game state is always valid after creation
         #[test]
         fn prop_game_creation_is_valid(seed in any::<u64>()) {
@@ -166,6 +289,94 @@ mod tests {
     }
 
     // Non-property tests for specific invariant checks
+
+    /// Regression test for serialization bug found with seed 999
+    /// This test reproduces the exact scenario that caused deserialization failure
+    #[test]
+    fn test_serialization_regression_seed_999() {
+        use crate::json_state::{to_json, deserialize_game_state};
+
+        let mut game = Game::new(6, 6, 999);
+
+        // Place forced card at (2, 3) - CORNER_SE
+        let result = game.place_forced_card(Position::new(2, 3));
+        assert!(result.success, "First placement should succeed");
+
+        // Serialize after placement
+        let json = to_json(&game).expect("Serialization after placement should succeed");
+        let blob_after_place = json.state_blob.clone();
+
+        // This should not panic
+        let restored = deserialize_game_state(&blob_after_place)
+            .expect("Deserialization after placement should succeed");
+
+        assert_eq!(game.turn, restored.turn);
+        assert_eq!(game.phase, restored.phase);
+
+        // Now skip optional card - this is where the bug was triggered
+        game.skip_optional_card();
+
+        // Serialize after skip
+        let json = to_json(&game).expect("Serialization after skip should succeed");
+        let blob_after_skip = json.state_blob.clone();
+
+        // This is where the original bug occurred - deserialization should work
+        let restored = deserialize_game_state(&blob_after_skip)
+            .expect("BUG: Deserialization after skip failed - this is the regression!");
+
+        assert_eq!(game.turn, restored.turn);
+        assert_eq!(game.phase, restored.phase);
+        assert_eq!(game.board.all_tiles().len(), restored.board.all_tiles().len());
+    }
+
+    /// Test serialization with various small board sizes (where bug was found)
+    #[test]
+    fn test_serialization_small_boards() {
+        use crate::json_state::{to_json, deserialize_game_state};
+
+        for size in 5..10 {
+            for seed in [0, 42, 123, 999, 12345] {
+                let mut game = Game::new(size, size, seed);
+
+                // Serialize initial state
+                let json = to_json(&game).expect(&format!(
+                    "Initial serialization failed for size={}, seed={}",
+                    size, seed
+                ));
+                deserialize_game_state(&json.state_blob).expect(&format!(
+                    "Initial deserialization failed for size={}, seed={}",
+                    size, seed
+                ));
+
+                // Make a move
+                let center = size / 2;
+                let _ = game.place_forced_card(Position::new(center + 1, center));
+
+                // Serialize after move
+                let json = to_json(&game).expect(&format!(
+                    "Post-move serialization failed for size={}, seed={}",
+                    size, seed
+                ));
+                deserialize_game_state(&json.state_blob).expect(&format!(
+                    "Post-move deserialization failed for size={}, seed={}",
+                    size, seed
+                ));
+
+                // Skip optional
+                game.skip_optional_card();
+
+                // Serialize after skip
+                let json = to_json(&game).expect(&format!(
+                    "Post-skip serialization failed for size={}, seed={}",
+                    size, seed
+                ));
+                deserialize_game_state(&json.state_blob).expect(&format!(
+                    "Post-skip deserialization failed for size={}, seed={}",
+                    size, seed
+                ));
+            }
+        }
+    }
 
     #[test]
     fn test_invariant_no_tiles_overlap() {
