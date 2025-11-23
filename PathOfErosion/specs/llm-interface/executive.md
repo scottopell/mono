@@ -16,23 +16,23 @@ The LLM interface extends the existing pure core/thin shell architecture by addi
 
 | Requirement | Status | Notes |
 |-------------|--------|-------|
-| **REQ-LLM-001:** Visualize Game Board | ❌ Not Started | Renderer module planned |
-| **REQ-LLM-002:** Understand Current Cards | ❌ Not Started | Card description logic pending |
-| **REQ-LLM-003:** Discover Valid Moves | ❌ Not Started | Move computation not implemented |
-| **REQ-LLM-004:** Understand Game Phase | ❌ Not Started | Phase serialization pending |
-| **REQ-LLM-005:** Issue Placement Commands | ❌ Not Started | Command parser not started |
-| **REQ-LLM-006:** Skip Optional Cards | ❌ Not Started | Skip command not implemented |
-| **REQ-LLM-007:** Receive Action Feedback | ❌ Not Started | Result serialization pending |
-| **REQ-LLM-008:** Track Game Progress | ❌ Not Started | Turn/tile count not exposed |
-| **REQ-LLM-009:** Maintain State Continuity | ❌ Not Started | State serialization not implemented |
-| **REQ-LLM-010:** Start New Games | ❌ Not Started | NewGame command pending |
-| **REQ-LLM-011:** Understand Tile Symbols | ❌ Not Started | Symbol mapping not created |
-| **REQ-LLM-012:** Identify Hazards | ❌ Not Started | Hazard rendering not implemented |
-| **REQ-LLM-013:** Receive Contextual Summaries | ❌ Not Started | Context generation pending |
-| **REQ-LLM-014:** Understand Erosion Impact | ❌ Not Started | Erosion reporting not implemented |
-| **REQ-LLM-015:** Access Complete State Data | ❌ Not Started | Structured data export pending |
+| **REQ-LLM-001:** Visualize Game Board | ✅ Complete | renderer.rs::render_board() with box-drawing chars |
+| **REQ-LLM-002:** Understand Current Cards | ✅ Complete | json_state.rs::describe_card() with descriptions |
+| **REQ-LLM-003:** Discover Valid Moves | ✅ Complete | json_state.rs::compute_valid_moves() |
+| **REQ-LLM-004:** Understand Game Phase | ✅ Complete | GameStateJson.phase and context fields |
+| **REQ-LLM-005:** Issue Placement Commands | ✅ Complete | commands.rs PlaceForcedCard/PlaceOptionalCard |
+| **REQ-LLM-006:** Skip Optional Cards | ✅ Complete | commands.rs SkipOptional command |
+| **REQ-LLM-007:** Receive Action Feedback | ✅ Complete | CommandResult with success/message/erosion |
+| **REQ-LLM-008:** Track Game Progress | ✅ Complete | GameStateJson.turn and tile count in board |
+| **REQ-LLM-009:** Maintain State Continuity | ✅ Complete | Bincode serialization to state_blob |
+| **REQ-LLM-010:** Start New Games | ✅ Complete | commands.rs NewGame with seed support |
+| **REQ-LLM-011:** Understand Tile Symbols | ✅ Complete | renderer.rs::tile_to_char() mapping |
+| **REQ-LLM-012:** Identify Hazards | ✅ Complete | Hazards rendered as X in ASCII |
+| **REQ-LLM-013:** Receive Contextual Summaries | ✅ Complete | GameStateJson.context with turn summary |
+| **REQ-LLM-014:** Understand Erosion Impact | ✅ Complete | ErosionInfo in CommandResult |
+| **REQ-LLM-015:** Access Complete State Data | ✅ Complete | BoardJson.tiles and hazards arrays |
 
-**Progress:** 0 of 15 requirements complete
+**Progress:** 15 of 15 requirements complete (100%)
 
 ## Implementation Plan
 
