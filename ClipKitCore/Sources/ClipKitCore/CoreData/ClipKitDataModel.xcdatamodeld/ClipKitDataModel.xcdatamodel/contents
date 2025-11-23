@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23788" systemVersion="24E263" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
+    <!-- Main entity: ClipKitItem - unified model for both clipboard history and explicit snippets -->
+    <entity name="ClipKitItem" representedClassName="ClipKitItem" syncable="YES">
+        <!-- Core Identity -->
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="modifiedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+
+        <!-- Item Classification -->
+        <attribute name="itemType" attributeType="String" defaultValueString="clipboardHistory"/>
+        <attribute name="lifetimeType" attributeType="String" defaultValueString="permanent"/>
+        <attribute name="saveMethod" attributeType="String" defaultValueString="automatic"/>
+        <attribute name="platform" optional="YES" attributeType="String"/>
+
+        <!-- Lifecycle Management -->
+        <attribute name="expirationDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="isPinned" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="isDeleted" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+
+        <!-- Organization -->
+        <attribute name="tags" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="[String]"/>
+        <attribute name="notes" optional="YES" attributeType="String"/>
+
+        <!-- Relationships -->
+        <relationship name="contents" toMany="YES" deletionRule="Cascade" destinationEntity="ClipKitContent" inverseName="item" inverseEntity="ClipKitContent"/>
+        <relationship name="sourceApplication" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="ClipKitSourceApp" inverseName="items" inverseEntity="ClipKitSourceApp"/>
+    </entity>
+
+    <!-- Content entity: stores the actual clipboard/snippet data -->
+    <entity name="ClipKitContent" representedClassName="ClipKitContent" syncable="YES">
+        <!-- Data Storage -->
+        <attribute name="data" attributeType="Binary" allowsExternalBinaryDataStorage="YES"/>
+        <attribute name="textPreview" optional="YES" attributeType="String"/>
+
+        <!-- Content Metadata -->
+        <attribute name="contentType" attributeType="String" defaultValueString="text/plain"/>
+        <attribute name="byteSize" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+
+        <!-- Relationships -->
+        <relationship name="formats" toMany="YES" deletionRule="Cascade" destinationEntity="ClipKitFormat" inverseName="content" inverseEntity="ClipKitFormat"/>
+        <relationship name="item" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="ClipKitItem" inverseName="contents" inverseEntity="ClipKitItem"/>
+    </entity>
+
+    <!-- Format entity: UTI information for multi-format content -->
+    <entity name="ClipKitFormat" representedClassName="ClipKitFormat" syncable="YES">
+        <attribute name="uti" attributeType="String"/>
+        <attribute name="typeName" optional="YES" attributeType="String"/>
+        <relationship name="content" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="ClipKitContent" inverseName="formats" inverseEntity="ClipKitContent"/>
+    </entity>
+
+    <!-- Source Application entity: tracks which app created the item -->
+    <entity name="ClipKitSourceApp" representedClassName="ClipKitSourceApp" syncable="YES">
+        <attribute name="bundleIdentifier" optional="YES" attributeType="String"/>
+        <attribute name="applicationName" optional="YES" attributeType="String"/>
+        <attribute name="applicationIconData" optional="YES" attributeType="Binary" allowsExternalBinaryDataStorage="YES"/>
+        <relationship name="items" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="ClipKitItem" inverseName="sourceApplication" inverseEntity="ClipKitItem"/>
+    </entity>
+</model>

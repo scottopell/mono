@@ -1,0 +1,14 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+*.xcodeproj/
+
+# Xcode
+xcuserdata/
+*.xcworkspace/
+
+# macOS
+.DS_Store
+
+# Tests
+.test-artifacts/
