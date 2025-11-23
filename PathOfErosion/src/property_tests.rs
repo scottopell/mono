@@ -439,6 +439,133 @@ mod tests {
 
     // Non-property tests for specific invariant checks
 
+    /// CRITICAL TEST: Use the EXACT failing state blob from the bug report
+    #[test]
+    fn test_exact_failing_blob() {
+        use crate::commands::{execute, Command};
+
+        // This is the EXACT blob that failed during manual testing
+        let failing_blob = "AgAAAAAAAAADAAAAAwAAAAEAAAADAAAAAwAAAAsAAAAAAAAAAgAAAAMAAAACAAAAAgAAAAMAAAAEAAAAAAAAAAMAAAAGAAAABgAAADAAAAAAAAAACQAAAAEAAAABAAAABQAAAAEAAAAEAAAAAwAAAAoAAAAFAAAAAwAAAAcAAAADAAAAAgAAAAkAAAAGAAAAAAAAAAgAAAAKAAAACAAAAAoAAAADAAAAAAAAAAoAAAABAAAAAAAAAAgAAAAJAAAAAAAAAAEAAAACAAAAAQAAAAoAAAAIAAAABAAAAAMAAAABAAAACQAAAAgAAAAAAAAAAwAAAAoAAAAFAAAABQAAAAkAAAAJAAAAAQAAAAQAAAADAAAAAQAAAAAAAAAEAAAA5wMAAAAAAAAMAAAAAAAAAAAAAAAEAAAABQAAAAAAAAAAAAAAAgAAAAQAAAACAAAAAQAAAAQAAAAFAAAAAgAAAAQAAAAEAAAAAwAAAAAAAAAEAAAABQAAAAIAAAAFAAAAAAAAAAUAAAABAAAAAQAAAOcDAAAAAAAAAQQAAAABBgAAAAEAAAAAAAAA5wMAAAAAAAA=";
+
+        // Try to skip optional with this blob
+        let result = execute(Command::SkipOptional {
+            state: failing_blob.to_string(),
+        });
+
+        match result {
+            Ok(_) => {
+                // If it succeeds now, the bug was transient or the blob was corrupted during copy
+                println!("WARNING: The 'failing' blob now works! Bug may have been transient or copy/paste error");
+            }
+            Err(e) => {
+                // If it fails, we've reproduced the bug!
+                panic!("BUG REPRODUCED! Error: {}", e);
+            }
+        }
+    }
+
+    /// CRITICAL TEST: Exact reproduction of CLI command flow
+    /// This mimics the exact sequence that caused the failure:
+    /// 1. Create game via command
+    /// 2. Place forced card via command (with state blob round-trip)
+    /// 3. Skip optional via command (with state blob round-trip)
+    #[test]
+    fn test_command_flow_exact_reproduction() {
+        use crate::commands::{execute, Command};
+
+        // Step 1: Create game via command (like CLI does)
+        let new_game_result = execute(Command::NewGame {
+            width: 6,
+            height: 6,
+            seed: Some(999),
+        }).expect("New game should succeed");
+
+        let state_blob_1 = new_game_result.new_state.state_blob.clone();
+
+        // Step 2: Place forced card via command with state blob
+        let place_result = execute(Command::PlaceForcedCard {
+            state: state_blob_1,
+            x: 2,
+            y: 3,
+        }).expect("Place forced should succeed");
+
+        let state_blob_2 = place_result.new_state.state_blob.clone();
+
+        // Step 3: Skip optional via command - THIS IS WHERE IT FAILED
+        let skip_result = execute(Command::SkipOptional {
+            state: state_blob_2.clone(),
+        }).expect("CRITICAL: Skip optional failed - this is the bug!");
+
+        // Verify state is still valid
+        assert_eq!(skip_result.new_state.turn, 1);
+        assert_eq!(skip_result.new_state.phase, "PLACING_FORCED_CARD");
+
+        // Also verify the blob can be deserialized multiple times
+        for _ in 0..10 {
+            let skip_again = execute(Command::SkipOptional {
+                state: state_blob_2.clone(),
+            }).expect("Repeated skip should also work");
+            assert_eq!(skip_again.new_state.turn, 1);
+        }
+    }
+
+    /// STRESS TEST: Command flow with many iterations
+    /// Tests the full command execution path, not just Game methods
+    #[test]
+    fn test_command_flow_stress() {
+        use crate::commands::{execute, Command};
+        use rand::Rng;
+
+        let mut rng = rand::thread_rng();
+
+        for iteration in 0..1000 {
+            let seed = rng.gen::<u64>();
+            let size = rng.gen_range(5..10);
+
+            // Create game via command
+            let mut result = execute(Command::NewGame {
+                width: size,
+                height: size,
+                seed: Some(seed),
+            }).expect(&format!("Iteration {}: New game failed", iteration));
+
+            let center = size / 2;
+
+            // Perform operations via commands (using state blobs)
+            for op in 0..10 {
+                let current_blob = result.new_state.state_blob.clone();
+
+                // Try placing forced card
+                let x = center + rng.gen_range(-1..2);
+                let y = center + rng.gen_range(-1..2);
+
+                result = execute(Command::PlaceForcedCard {
+                    state: current_blob.clone(),
+                    x,
+                    y,
+                }).expect(&format!(
+                    "Iteration {}, op {}: Place forced failed with seed={}, size={}",
+                    iteration, op, seed, size
+                ));
+
+                // Skip optional via command
+                let current_blob = result.new_state.state_blob.clone();
+                result = execute(Command::SkipOptional {
+                    state: current_blob,
+                }).expect(&format!(
+                    "Iteration {}, op {}: Skip optional failed with seed={}, size={}, blob_len={}",
+                    iteration, op, seed, size, result.new_state.state_blob.len()
+                ));
+            }
+
+            if iteration % 100 == 0 {
+                println!("Command flow test: {} iterations completed", iteration);
+            }
+        }
+
+        println!("Command flow stress test: 1000 iterations completed successfully!");
+    }
+
     /// MANUAL STRESS TEST: Run many iterations explicitly
     /// This doesn't rely on proptest config - runs 10,000 iterations manually
     #[test]
