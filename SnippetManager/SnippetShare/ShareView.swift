@@ -12,7 +12,7 @@ struct ShareView: View {
     let onSave: (Bool) -> Void  // Takes isTimed parameter
     let onCancel: () -> Void
 
-    @State private var snippetType: SnippetType = .regular
+    @State private var snippetType: SnippetType = .timed
 
     enum SnippetType: String, CaseIterable {
         case regular = "Regular"

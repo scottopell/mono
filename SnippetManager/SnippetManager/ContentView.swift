@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var snippets: [Snippet] = []
+    @Environment(\.scenePhase) private var scenePhase
     private let storage = SnippetStorage()
 
     var body: some View {
@@ -45,6 +46,11 @@ struct ContentView: View {
             .navigationTitle("Snippets")
             .onAppear {
                 loadSnippets()
+            }
+            .onChange(of: scenePhase) { oldPhase, newPhase in
+                if newPhase == .active {
+                    loadSnippets()
+                }
             }
         }
     }
