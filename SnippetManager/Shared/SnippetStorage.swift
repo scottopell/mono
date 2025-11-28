@@ -10,7 +10,7 @@ import Foundation
 class SnippetStorage {
     // IMPORTANT: Replace this with your actual App Group ID
     // Format: group.com.yourcompany.snippetmanager
-    static let appGroupID = "group.com.yourcompany.snippetmanager"
+    static let appGroupID = "group.com.scottopell.snippetmanager"
     private static let snippetsKey = "saved_snippets"
 
     private let userDefaults: UserDefaults?

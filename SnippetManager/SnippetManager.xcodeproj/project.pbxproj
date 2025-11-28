@@ -3,53 +3,46 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A0000001000000000000001 /* SnippetManagerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000001000000000000002 /* SnippetManagerApp.swift */; };
-		A0000001000000000000003 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000001000000000000004 /* ContentView.swift */; };
-		A0000001000000000000005 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A0000001000000000000006 /* Assets.xcassets */; };
-		A0000001000000000000007 /* Snippet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000001000000000000008 /* Snippet.swift */; };
-		A0000001000000000000009 /* SnippetStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000100000000000000A /* SnippetStorage.swift */; };
-		A000000100000000000000B /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000100000000000000C /* KeyboardViewController.swift */; };
-		A000000100000000000000D /* KeyboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000100000000000000E /* KeyboardView.swift */; };
-		A000000100000000000000F /* Snippet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000001000000000000008 /* Snippet.swift */; };
-		A0000001000000000000010 /* SnippetStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000100000000000000A /* SnippetStorage.swift */; };
-		A0000001000000000000011 /* SnippetKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A0000001000000000000012 /* SnippetKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		A0000001000000000000013 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000001000000000000014 /* ShareViewController.swift */; };
-		A0000001000000000000015 /* ShareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000001000000000000016 /* ShareView.swift */; };
-		A0000001000000000000017 /* Snippet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000001000000000000008 /* Snippet.swift */; };
-		A0000001000000000000018 /* SnippetStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000100000000000000A /* SnippetStorage.swift */; };
-		A0000001000000000000019 /* SnippetShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A000000100000000000001A /* SnippetShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		471A8ED82ED9EF9D0036D54C /* SnippetKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 471A8ED12ED9EF9D0036D54C /* SnippetKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		471A8EEC2ED9EFB40036D54C /* SnippetShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 471A8EE22ED9EFB40036D54C /* SnippetShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		4733CE692ED9F1A9008D1851 /* SnippetStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4733CE682ED9F1A9008D1851 /* SnippetStorage.swift */; };
+		4733CE6A2ED9F1A9008D1851 /* Snippet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4733CE672ED9F1A9008D1851 /* Snippet.swift */; };
+		4733CE6B2ED9F1A9008D1851 /* SnippetStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4733CE682ED9F1A9008D1851 /* SnippetStorage.swift */; };
+		4733CE6C2ED9F1A9008D1851 /* Snippet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4733CE672ED9F1A9008D1851 /* Snippet.swift */; };
+		4733CE6D2ED9F1A9008D1851 /* SnippetStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4733CE682ED9F1A9008D1851 /* SnippetStorage.swift */; };
+		4733CE6E2ED9F1A9008D1851 /* Snippet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4733CE672ED9F1A9008D1851 /* Snippet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		A000000100000000000001B /* PBXContainerItemProxy */ = {
+		471A8ED62ED9EF9D0036D54C /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
-			containerPortal = A000000100000000000001C /* Project object */;
+			containerPortal = 471A8EB72ED9EF870036D54C /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = A0000001000000000000012;
+			remoteGlobalIDString = 471A8ED02ED9EF9D0036D54C;
 			remoteInfo = SnippetKeyboard;
 		};
-		A000000100000000000001D /* PBXContainerItemProxy */ = {
+		471A8EEA2ED9EFB40036D54C /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
-			containerPortal = A000000100000000000001C /* Project object */;
+			containerPortal = 471A8EB72ED9EF870036D54C /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = A000000100000000000001A;
+			remoteGlobalIDString = 471A8EE12ED9EFB40036D54C;
 			remoteInfo = SnippetShare;
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		A000000100000000000001E /* Embed Foundation Extensions */ = {
+		471A8EDD2ED9EF9D0036D54C /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				A0000001000000000000011 /* SnippetKeyboard.appex in Embed Foundation Extensions */,
-				A0000001000000000000019 /* SnippetShare.appex in Embed Foundation Extensions */,
+				471A8EEC2ED9EFB40036D54C /* SnippetShare.appex in Embed Foundation Extensions */,
+				471A8ED82ED9EF9D0036D54C /* SnippetKeyboard.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -57,39 +50,70 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		A000000100000000000001F /* SnippetManager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SnippetManager.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		A0000001000000000000002 /* SnippetManagerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetManagerApp.swift; sourceTree = "<group>"; };
-		A0000001000000000000004 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		A0000001000000000000006 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		A0000001000000000000008 /* Snippet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snippet.swift; sourceTree = "<group>"; };
-		A000000100000000000000A /* SnippetStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetStorage.swift; sourceTree = "<group>"; };
-		A0000001000000000000012 /* SnippetKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SnippetKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		A000000100000000000000C /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
-		A000000100000000000000E /* KeyboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardView.swift; sourceTree = "<group>"; };
-		A0000001000000000000020 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		A000000100000000000001A /* SnippetShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SnippetShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		A0000001000000000000014 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
-		A0000001000000000000016 /* ShareView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareView.swift; sourceTree = "<group>"; };
-		A0000001000000000000021 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		A0000001000000000000022 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		471A8EBF2ED9EF870036D54C /* SnippetManager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SnippetManager.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		471A8ED12ED9EF9D0036D54C /* SnippetKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SnippetKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		471A8EE22ED9EFB40036D54C /* SnippetShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SnippetShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		4733CE672ED9F1A9008D1851 /* Snippet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snippet.swift; sourceTree = "<group>"; };
+		4733CE682ED9F1A9008D1851 /* SnippetStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetStorage.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		4733CE762ED9F3AB008D1851 /* Exceptions for "SnippetShare" folder in "SnippetShare" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 471A8EE12ED9EFB40036D54C /* SnippetShare */;
+		};
+		4733CE772ED9F3B1008D1851 /* Exceptions for "SnippetKeyboard" folder in "SnippetKeyboard" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 471A8ED02ED9EF9D0036D54C /* SnippetKeyboard */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		471A8EC12ED9EF870036D54C /* SnippetManager */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SnippetManager;
+			sourceTree = "<group>";
+		};
+		471A8ED22ED9EF9D0036D54C /* SnippetKeyboard */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				4733CE772ED9F3B1008D1851 /* Exceptions for "SnippetKeyboard" folder in "SnippetKeyboard" target */,
+			);
+			path = SnippetKeyboard;
+			sourceTree = "<group>";
+		};
+		471A8EE32ED9EFB40036D54C /* SnippetShare */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				4733CE762ED9F3AB008D1851 /* Exceptions for "SnippetShare" folder in "SnippetShare" target */,
+			);
+			path = SnippetShare;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
 /* Begin PBXFrameworksBuildPhase section */
-		A0000001000000000000023 /* Frameworks */ = {
+		471A8EBC2ED9EF870036D54C /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A0000001000000000000024 /* Frameworks */ = {
+		471A8ECE2ED9EF9D0036D54C /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A0000001000000000000025 /* Frameworks */ = {
+		471A8EDF2ED9EFB40036D54C /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -99,182 +123,166 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		A0000001000000000000026 = {
+		471A8EB62ED9EF870036D54C = {
 			isa = PBXGroup;
 			children = (
-				A0000001000000000000027 /* SnippetManager */,
-				A0000001000000000000028 /* SnippetKeyboard */,
-				A0000001000000000000029 /* SnippetShare */,
-				A000000100000000000002A /* Shared */,
-				A000000100000000000002B /* Products */,
+				471A8EF12ED9EFF60036D54C /* Shared */,
+				471A8EC12ED9EF870036D54C /* SnippetManager */,
+				471A8ED22ED9EF9D0036D54C /* SnippetKeyboard */,
+				471A8EE32ED9EFB40036D54C /* SnippetShare */,
+				471A8EC02ED9EF870036D54C /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		A0000001000000000000027 /* SnippetManager */ = {
+		471A8EC02ED9EF870036D54C /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				A0000001000000000000002 /* SnippetManagerApp.swift */,
-				A0000001000000000000004 /* ContentView.swift */,
-				A0000001000000000000006 /* Assets.xcassets */,
-				A0000001000000000000022 /* Info.plist */,
-			);
-			path = SnippetManager;
-			sourceTree = "<group>";
-		};
-		A0000001000000000000028 /* SnippetKeyboard */ = {
-			isa = PBXGroup;
-			children = (
-				A000000100000000000000C /* KeyboardViewController.swift */,
-				A000000100000000000000E /* KeyboardView.swift */,
-				A0000001000000000000020 /* Info.plist */,
-			);
-			path = SnippetKeyboard;
-			sourceTree = "<group>";
-		};
-		A0000001000000000000029 /* SnippetShare */ = {
-			isa = PBXGroup;
-			children = (
-				A0000001000000000000014 /* ShareViewController.swift */,
-				A0000001000000000000016 /* ShareView.swift */,
-				A0000001000000000000021 /* Info.plist */,
-			);
-			path = SnippetShare;
-			sourceTree = "<group>";
-		};
-		A000000100000000000002A /* Shared */ = {
-			isa = PBXGroup;
-			children = (
-				A0000001000000000000008 /* Snippet.swift */,
-				A000000100000000000000A /* SnippetStorage.swift */,
-			);
-			path = Shared;
-			sourceTree = "<group>";
-		};
-		A000000100000000000002B /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				A000000100000000000001F /* SnippetManager.app */,
-				A0000001000000000000012 /* SnippetKeyboard.appex */,
-				A000000100000000000001A /* SnippetShare.appex */,
+				471A8EBF2ED9EF870036D54C /* SnippetManager.app */,
+				471A8ED12ED9EF9D0036D54C /* SnippetKeyboard.appex */,
+				471A8EE22ED9EFB40036D54C /* SnippetShare.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		471A8EF12ED9EFF60036D54C /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				4733CE672ED9F1A9008D1851 /* Snippet.swift */,
+				4733CE682ED9F1A9008D1851 /* SnippetStorage.swift */,
+			);
+			path = Shared;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		A000000100000000000002C /* SnippetManager */ = {
+		471A8EBE2ED9EF870036D54C /* SnippetManager */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A000000100000000000002D /* Build configuration list for PBXNativeTarget "SnippetManager" */;
+			buildConfigurationList = 471A8ECA2ED9EF880036D54C /* Build configuration list for PBXNativeTarget "SnippetManager" */;
 			buildPhases = (
-				A000000100000000000002E /* Sources */,
-				A0000001000000000000023 /* Frameworks */,
-				A000000100000000000002F /* Resources */,
-				A000000100000000000001E /* Embed Foundation Extensions */,
+				471A8EBB2ED9EF870036D54C /* Sources */,
+				471A8EBC2ED9EF870036D54C /* Frameworks */,
+				471A8EBD2ED9EF870036D54C /* Resources */,
+				471A8EDD2ED9EF9D0036D54C /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				A0000001000000000000030 /* PBXTargetDependency */,
-				A0000001000000000000031 /* PBXTargetDependency */,
+				471A8ED72ED9EF9D0036D54C /* PBXTargetDependency */,
+				471A8EEB2ED9EFB40036D54C /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				471A8EC12ED9EF870036D54C /* SnippetManager */,
 			);
 			name = SnippetManager;
+			packageProductDependencies = (
+			);
 			productName = SnippetManager;
-			productReference = A000000100000000000001F /* SnippetManager.app */;
+			productReference = 471A8EBF2ED9EF870036D54C /* SnippetManager.app */;
 			productType = "com.apple.product-type.application";
 		};
-		A0000001000000000000032 /* SnippetKeyboard */ = {
+		471A8ED02ED9EF9D0036D54C /* SnippetKeyboard */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A0000001000000000000033 /* Build configuration list for PBXNativeTarget "SnippetKeyboard" */;
+			buildConfigurationList = 471A8EDA2ED9EF9D0036D54C /* Build configuration list for PBXNativeTarget "SnippetKeyboard" */;
 			buildPhases = (
-				A0000001000000000000034 /* Sources */,
-				A0000001000000000000024 /* Frameworks */,
-				A0000001000000000000035 /* Resources */,
+				471A8ECD2ED9EF9D0036D54C /* Sources */,
+				471A8ECE2ED9EF9D0036D54C /* Frameworks */,
+				471A8ECF2ED9EF9D0036D54C /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				471A8ED22ED9EF9D0036D54C /* SnippetKeyboard */,
 			);
 			name = SnippetKeyboard;
+			packageProductDependencies = (
+			);
 			productName = SnippetKeyboard;
-			productReference = A0000001000000000000012 /* SnippetKeyboard.appex */;
+			productReference = 471A8ED12ED9EF9D0036D54C /* SnippetKeyboard.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
-		A0000001000000000000036 /* SnippetShare */ = {
+		471A8EE12ED9EFB40036D54C /* SnippetShare */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A0000001000000000000037 /* Build configuration list for PBXNativeTarget "SnippetShare" */;
+			buildConfigurationList = 471A8EEE2ED9EFB40036D54C /* Build configuration list for PBXNativeTarget "SnippetShare" */;
 			buildPhases = (
-				A0000001000000000000038 /* Sources */,
-				A0000001000000000000025 /* Frameworks */,
-				A0000001000000000000039 /* Resources */,
+				471A8EDE2ED9EFB40036D54C /* Sources */,
+				471A8EDF2ED9EFB40036D54C /* Frameworks */,
+				471A8EE02ED9EFB40036D54C /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
+			fileSystemSynchronizedGroups = (
+				471A8EE32ED9EFB40036D54C /* SnippetShare */,
+			);
 			name = SnippetShare;
+			packageProductDependencies = (
+			);
 			productName = SnippetShare;
-			productReference = A000000100000000000001A /* SnippetShare.appex */;
+			productReference = 471A8EE22ED9EFB40036D54C /* SnippetShare.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		A000000100000000000001C /* Project object */ = {
+		471A8EB72ED9EF870036D54C /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1500;
-				LastUpgradeCheck = 1500;
+				LastSwiftUpdateCheck = 1630;
+				LastUpgradeCheck = 1630;
 				TargetAttributes = {
-					A000000100000000000002C = {
-						CreatedOnToolsVersion = 15.0;
+					471A8EBE2ED9EF870036D54C = {
+						CreatedOnToolsVersion = 16.3;
 					};
-					A0000001000000000000032 = {
-						CreatedOnToolsVersion = 15.0;
+					471A8ED02ED9EF9D0036D54C = {
+						CreatedOnToolsVersion = 16.3;
 					};
-					A0000001000000000000036 = {
-						CreatedOnToolsVersion = 15.0;
+					471A8EE12ED9EFB40036D54C = {
+						CreatedOnToolsVersion = 16.3;
 					};
 				};
 			};
-			buildConfigurationList = A000000100000000000003A /* Build configuration list for PBXProject "SnippetManager" */;
-			compatibilityVersion = "Xcode 14.0";
+			buildConfigurationList = 471A8EBA2ED9EF870036D54C /* Build configuration list for PBXProject "SnippetManager" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
 				Base,
 			);
-			mainGroup = A0000001000000000000026;
-			productRefGroup = A000000100000000000002B /* Products */;
+			mainGroup = 471A8EB62ED9EF870036D54C;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 471A8EC02ED9EF870036D54C /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				A000000100000000000002C /* SnippetManager */,
-				A0000001000000000000032 /* SnippetKeyboard */,
-				A0000001000000000000036 /* SnippetShare */,
+				471A8EBE2ED9EF870036D54C /* SnippetManager */,
+				471A8ED02ED9EF9D0036D54C /* SnippetKeyboard */,
+				471A8EE12ED9EFB40036D54C /* SnippetShare */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		A000000100000000000002F /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				A0000001000000000000005 /* Assets.xcassets in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		A0000001000000000000035 /* Resources */ = {
+		471A8EBD2ED9EF870036D54C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A0000001000000000000039 /* Resources */ = {
+		471A8ECF2ED9EF9D0036D54C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		471A8EE02ED9EFB40036D54C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -284,56 +292,50 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		A000000100000000000002E /* Sources */ = {
+		471A8EBB2ED9EF870036D54C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A0000001000000000000003 /* ContentView.swift in Sources */,
-				A0000001000000000000001 /* SnippetManagerApp.swift in Sources */,
-				A0000001000000000000007 /* Snippet.swift in Sources */,
-				A0000001000000000000009 /* SnippetStorage.swift in Sources */,
+				4733CE6B2ED9F1A9008D1851 /* SnippetStorage.swift in Sources */,
+				4733CE6C2ED9F1A9008D1851 /* Snippet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A0000001000000000000034 /* Sources */ = {
+		471A8ECD2ED9EF9D0036D54C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A000000100000000000000B /* KeyboardViewController.swift in Sources */,
-				A000000100000000000000D /* KeyboardView.swift in Sources */,
-				A000000100000000000000F /* Snippet.swift in Sources */,
-				A0000001000000000000010 /* SnippetStorage.swift in Sources */,
+				4733CE692ED9F1A9008D1851 /* SnippetStorage.swift in Sources */,
+				4733CE6A2ED9F1A9008D1851 /* Snippet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A0000001000000000000038 /* Sources */ = {
+		471A8EDE2ED9EFB40036D54C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A0000001000000000000013 /* ShareViewController.swift in Sources */,
-				A0000001000000000000015 /* ShareView.swift in Sources */,
-				A0000001000000000000017 /* Snippet.swift in Sources */,
-				A0000001000000000000018 /* SnippetStorage.swift in Sources */,
+				4733CE6D2ED9F1A9008D1851 /* SnippetStorage.swift in Sources */,
+				4733CE6E2ED9F1A9008D1851 /* Snippet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		A0000001000000000000030 /* PBXTargetDependency */ = {
+		471A8ED72ED9EF9D0036D54C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = A0000001000000000000032 /* SnippetKeyboard */;
-			targetProxy = A000000100000000000001B /* PBXContainerItemProxy */;
+			target = 471A8ED02ED9EF9D0036D54C /* SnippetKeyboard */;
+			targetProxy = 471A8ED62ED9EF9D0036D54C /* PBXContainerItemProxy */;
 		};
-		A0000001000000000000031 /* PBXTargetDependency */ = {
+		471A8EEB2ED9EFB40036D54C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = A0000001000000000000036 /* SnippetShare */;
-			targetProxy = A000000100000000000001D /* PBXContainerItemProxy */;
+			target = 471A8EE12ED9EFB40036D54C /* SnippetShare */;
+			targetProxy = 471A8EEA2ED9EFB40036D54C /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		A000000100000000000003B /* Debug */ = {
+		471A8EC82ED9EF880036D54C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -368,6 +370,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = X2ULA6KJUN;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -385,7 +388,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.4;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -396,7 +399,7 @@
 			};
 			name = Debug;
 		};
-		A000000100000000000003C /* Release */ = {
+		471A8EC92ED9EF880036D54C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -431,6 +434,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = X2ULA6KJUN;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -442,7 +446,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.4;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -452,7 +456,7 @@
 			};
 			name = Release;
 		};
-		A000000100000000000003D /* Debug */ = {
+		471A8ECB2ED9EF880036D54C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -460,21 +464,20 @@
 				CODE_SIGN_ENTITLEMENTS = SnippetManager/SnippetManager.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = X2ULA6KJUN;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = SnippetManager/Info.plist;
+				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.yourcompany.SnippetManager;
+				PRODUCT_BUNDLE_IDENTIFIER = com.scottopell.SnippetManager;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -482,7 +485,7 @@
 			};
 			name = Debug;
 		};
-		A000000100000000000003E /* Release */ = {
+		471A8ECC2ED9EF880036D54C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -490,21 +493,20 @@
 				CODE_SIGN_ENTITLEMENTS = SnippetManager/SnippetManager.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = X2ULA6KJUN;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = SnippetManager/Info.plist;
+				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.yourcompany.SnippetManager;
+				PRODUCT_BUNDLE_IDENTIFIER = com.scottopell.SnippetManager;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -512,14 +514,14 @@
 			};
 			name = Release;
 		};
-		A000000100000000000003F /* Debug */ = {
+		471A8EDB2ED9EF9D0036D54C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = SnippetKeyboard/SnippetKeyboard.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
-				GENERATE_INFOPLIST_FILE = NO;
+				DEVELOPMENT_TEAM = X2ULA6KJUN;
+				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SnippetKeyboard/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = SnippetKeyboard;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -529,7 +531,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.yourcompany.SnippetManager.SnippetKeyboard;
+				PRODUCT_BUNDLE_IDENTIFIER = com.scottopell.SnippetManager.SnippetKeyboard;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -538,14 +540,14 @@
 			};
 			name = Debug;
 		};
-		A0000001000000000000040 /* Release */ = {
+		471A8EDC2ED9EF9D0036D54C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = SnippetKeyboard/SnippetKeyboard.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
-				GENERATE_INFOPLIST_FILE = NO;
+				DEVELOPMENT_TEAM = X2ULA6KJUN;
+				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SnippetKeyboard/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = SnippetKeyboard;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -555,7 +557,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.yourcompany.SnippetManager.SnippetKeyboard;
+				PRODUCT_BUNDLE_IDENTIFIER = com.scottopell.SnippetManager.SnippetKeyboard;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -564,16 +566,16 @@
 			};
 			name = Release;
 		};
-		A0000001000000000000041 /* Debug */ = {
+		471A8EEF2ED9EFB40036D54C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = SnippetShare/SnippetShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
-				GENERATE_INFOPLIST_FILE = NO;
+				DEVELOPMENT_TEAM = X2ULA6KJUN;
+				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SnippetShare/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Save Snippet";
+				INFOPLIST_KEY_CFBundleDisplayName = SnippetShare;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -581,7 +583,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.yourcompany.SnippetManager.SnippetShare;
+				PRODUCT_BUNDLE_IDENTIFIER = com.scottopell.SnippetManager.SnippetShare;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -590,16 +592,16 @@
 			};
 			name = Debug;
 		};
-		A0000001000000000000042 /* Release */ = {
+		471A8EF02ED9EFB40036D54C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = SnippetShare/SnippetShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
-				GENERATE_INFOPLIST_FILE = NO;
+				DEVELOPMENT_TEAM = X2ULA6KJUN;
+				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SnippetShare/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Save Snippet";
+				INFOPLIST_KEY_CFBundleDisplayName = SnippetShare;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -607,7 +609,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.yourcompany.SnippetManager.SnippetShare;
+				PRODUCT_BUNDLE_IDENTIFIER = com.scottopell.SnippetManager.SnippetShare;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -619,43 +621,43 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		A000000100000000000003A /* Build configuration list for PBXProject "SnippetManager" */ = {
+		471A8EBA2ED9EF870036D54C /* Build configuration list for PBXProject "SnippetManager" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				A000000100000000000003B /* Debug */,
-				A000000100000000000003C /* Release */,
+				471A8EC82ED9EF880036D54C /* Debug */,
+				471A8EC92ED9EF880036D54C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A000000100000000000002D /* Build configuration list for PBXNativeTarget "SnippetManager" */ = {
+		471A8ECA2ED9EF880036D54C /* Build configuration list for PBXNativeTarget "SnippetManager" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				A000000100000000000003D /* Debug */,
-				A000000100000000000003E /* Release */,
+				471A8ECB2ED9EF880036D54C /* Debug */,
+				471A8ECC2ED9EF880036D54C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A0000001000000000000033 /* Build configuration list for PBXNativeTarget "SnippetKeyboard" */ = {
+		471A8EDA2ED9EF9D0036D54C /* Build configuration list for PBXNativeTarget "SnippetKeyboard" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				A000000100000000000003F /* Debug */,
-				A0000001000000000000040 /* Release */,
+				471A8EDB2ED9EF9D0036D54C /* Debug */,
+				471A8EDC2ED9EF9D0036D54C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A0000001000000000000037 /* Build configuration list for PBXNativeTarget "SnippetShare" */ = {
+		471A8EEE2ED9EFB40036D54C /* Build configuration list for PBXNativeTarget "SnippetShare" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				A0000001000000000000041 /* Debug */,
-				A0000001000000000000042 /* Release */,
+				471A8EEF2ED9EFB40036D54C /* Debug */,
+				471A8EF02ED9EFB40036D54C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = A000000100000000000001C /* Project object */;
+	rootObject = 471A8EB72ED9EF870036D54C /* Project object */;
 }
