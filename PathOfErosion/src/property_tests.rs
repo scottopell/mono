@@ -710,6 +710,227 @@ mod tests {
             prop_assert!(result.is_ok() || result.is_err(),
                 "Command should return Result, not panic");
         }
+
+        /// REAL GAME FLOW: Proptest-driven command sequences
+        /// Generates realistic game flows using proptest strategies
+        #[test]
+        fn prop_realistic_command_flows(
+            (width, height) in edge_case_board_size_strategy(),
+            seed in any::<u64>(),
+            operations in prop::collection::vec(
+                (0u8..3, -2i32..=2, -2i32..=2),
+                5..20
+            )
+        ) {
+            use crate::commands::{execute, Command};
+
+            // Start game via command
+            let mut result = execute(Command::NewGame {
+                width,
+                height,
+                seed: Some(seed),
+            }).expect("NewGame should succeed");
+
+            let center_x = width / 2;
+            let center_y = height / 2;
+            let mut current_blob = result.new_state.state_blob;
+
+            // Execute realistic game flow
+            for (i, (op_type, dx, dy)) in operations.iter().enumerate() {
+                let phase = result.new_state.phase.clone();
+
+                // Generate position around center (expanding outward as game progresses)
+                let x = center_x + dx;
+                let y = center_y + dy;
+
+                // Execute operation appropriate for current phase
+                result = match phase.as_str() {
+                    "PLACING_FORCED_CARD" => {
+                        // Must place forced card
+                        execute(Command::PlaceForcedCard {
+                            state: current_blob.clone(),
+                            x,
+                            y,
+                        }).expect(&format!("PlaceForcedCard deserialization failed at op {}", i))
+                    }
+                    "PLACING_OPTIONAL_CARD" => {
+                        // Can place optional or skip based on strategy
+                        if op_type % 3 == 0 {
+                            // Skip optional ~33% of the time
+                            execute(Command::SkipOptional {
+                                state: current_blob.clone(),
+                            }).expect(&format!("SkipOptional deserialization failed at op {}", i))
+                        } else {
+                            // Try to place optional
+                            execute(Command::PlaceOptionalCard {
+                                state: current_blob.clone(),
+                                x,
+                                y,
+                            }).expect(&format!("PlaceOptionalCard deserialization failed at op {}", i))
+                        }
+                    }
+                    _ => {
+                        // Unknown phase, skip
+                        execute(Command::SkipOptional {
+                            state: current_blob.clone(),
+                        }).expect(&format!("SkipOptional in unknown phase failed at op {}", i))
+                    }
+                };
+
+                // Verify deserialization after each command
+                current_blob = result.new_state.state_blob.clone();
+                use crate::json_state::deserialize_game_state;
+                let deserialized = deserialize_game_state(&current_blob).expect(&format!(
+                    "Deserialization failed after op {} in phase {}",
+                    i, phase
+                ));
+
+                // Verify game state invariants
+                prop_assert_eq!(deserialized.board.width, width);
+                prop_assert_eq!(deserialized.board.height, height);
+                prop_assert!(deserialized.turn <= 100, "Turn out of range: {}", deserialized.turn);
+            }
+        }
+
+        /// ADVERSARIAL FLOW: Intentionally difficult command sequences
+        #[test]
+        fn prop_adversarial_command_flows(
+            seed in any::<u64>(),
+            board_size in 5i32..8,
+            rapid_operations in prop::collection::vec(
+                (0u8..10, -3i32..=3, -3i32..=3),
+                10..30
+            )
+        ) {
+            use crate::commands::{execute, Command};
+
+            let mut result = execute(Command::NewGame {
+                width: board_size,
+                height: board_size,
+                seed: Some(seed),
+            }).expect("NewGame should succeed");
+
+            let center = board_size / 2;
+
+            for (i, (op_variant, dx, dy)) in rapid_operations.iter().enumerate() {
+                let current_blob = result.new_state.state_blob.clone();
+                let x = center + dx;
+                let y = center + dy;
+
+                // Rapid-fire commands with varied patterns
+                result = match op_variant % 4 {
+                    0 => {
+                        // Try to place forced (might fail due to game state)
+                        execute(Command::PlaceForcedCard {
+                            state: current_blob,
+                            x,
+                            y,
+                        }).unwrap_or_else(|_| {
+                            // If fails, skip instead
+                            execute(Command::SkipOptional {
+                                state: result.new_state.state_blob.clone(),
+                            }).expect("Fallback skip should work")
+                        })
+                    }
+                    1 => {
+                        // Try to place optional (might fail)
+                        execute(Command::PlaceOptionalCard {
+                            state: current_blob,
+                            x,
+                            y,
+                        }).unwrap_or_else(|_| {
+                            // If fails, skip instead
+                            execute(Command::SkipOptional {
+                                state: result.new_state.state_blob.clone(),
+                            }).expect("Fallback skip should work")
+                        })
+                    }
+                    _ => {
+                        // Skip optional
+                        execute(Command::SkipOptional {
+                            state: current_blob,
+                        }).expect(&format!("Skip should always work at op {}", i))
+                    }
+                };
+
+                // Verify state blob is still valid
+                use crate::json_state::deserialize_game_state;
+                deserialize_game_state(&result.new_state.state_blob).expect(&format!(
+                    "State blob invalid after adversarial op {} (variant={})",
+                    i, op_variant
+                ));
+            }
+        }
+
+        /// FULL GAME SIMULATION: Play multiple complete games
+        #[test]
+        fn prop_complete_game_flows(
+            seed in any::<u64>(),
+            board_size in 5i32..10,
+            max_turns in 20usize..50
+        ) {
+            use crate::commands::{execute, Command};
+
+            let mut result = execute(Command::NewGame {
+                width: board_size,
+                height: board_size,
+                seed: Some(seed),
+            }).expect("NewGame should succeed");
+
+            let center = board_size / 2;
+
+            // Play a complete game
+            for turn in 0..max_turns {
+                let phase = result.new_state.phase.clone();
+
+                // Stop if game ended
+                if phase == "GAME_OVER" || phase == "GAME_WON" {
+                    break;
+                }
+
+                let blob = result.new_state.state_blob.clone();
+
+                // Try to place near center with expanding radius
+                let radius = (turn / 5) as i32;
+                let x = center + (turn as i32 % 3 - 1) + radius;
+                let y = center + ((turn / 3) as i32 % 3 - 1) + radius;
+
+                result = match phase.as_str() {
+                    "PLACING_FORCED_CARD" => {
+                        execute(Command::PlaceForcedCard {
+                            state: blob,
+                            x,
+                            y,
+                        }).expect("PlaceForcedCard should deserialize")
+                    }
+                    "PLACING_OPTIONAL_CARD" => {
+                        // Place optional 50% of the time, skip 50%
+                        if turn % 2 == 0 {
+                            execute(Command::SkipOptional {
+                                state: blob,
+                            }).expect("SkipOptional should deserialize")
+                        } else {
+                            execute(Command::PlaceOptionalCard {
+                                state: blob,
+                                x,
+                                y,
+                            }).expect("PlaceOptionalCard should deserialize")
+                        }
+                    }
+                    _ => {
+                        prop_assert!(false, "Unexpected phase: {}", phase);
+                        unreachable!()
+                    }
+                };
+
+                // Verify serialization integrity
+                use crate::json_state::deserialize_game_state;
+                let deserialized = deserialize_game_state(&result.new_state.state_blob)
+                    .expect(&format!("Deserialization failed at turn {}", turn));
+
+                prop_assert_eq!(deserialized.turn, result.new_state.turn);
+            }
+        }
     }
 
     // Non-property tests for specific invariant checks
