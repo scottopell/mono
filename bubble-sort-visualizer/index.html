@@ -253,6 +253,31 @@
             box-shadow: 0 0 10px #ffd700, 0 0 20px #ffd700;
         }
 
+        .bar.frozen {
+            opacity: 0.7;
+            background: repeating-linear-gradient(
+                45deg,
+                #4a5568,
+                #4a5568 4px,
+                #2d3748 4px,
+                #2d3748 8px
+            ) !important;
+            border: 2px solid #63b3ed;
+            box-sizing: border-box;
+        }
+
+        .bar.frozen.comparing {
+            box-shadow: 0 0 10px #63b3ed, 0 0 20px #63b3ed;
+        }
+
+        .bar.blocked {
+            box-shadow: 0 0 10px #f56565, 0 0 20px #f56565;
+        }
+
+        .bar.duplicate {
+            border-bottom: 3px solid #ffd700;
+        }
+
         .bar-value {
             position: absolute;
             top: -20px;
@@ -457,6 +482,86 @@
             width: 100px;
             background: transparent;
         }
+
+        .toggle-btn {
+            background: #0f3460;
+            position: relative;
+        }
+
+        .toggle-btn.active {
+            background: #e94560;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #0f3460;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        @media (max-width: 480px) {
+            .checkbox-group {
+                padding: 10px;
+                font-size: 12px;
+                min-height: 44px;
+            }
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            min-height: auto;
+            cursor: pointer;
+        }
+
+        .controls-row {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 15px;
+            padding: 12px 15px;
+            background: #16213e;
+            border-radius: 8px;
+        }
+
+        @media (max-width: 480px) {
+            .controls-row {
+                gap: 10px;
+                padding: 10px;
+            }
+        }
+
+        .mode-indicator {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            margin-left: 5px;
+            vertical-align: middle;
+        }
+
+        .mode-indicator.defect {
+            background: #63b3ed;
+            color: #1a202c;
+        }
+
+        .mode-indicator.duplicates {
+            background: #ffd700;
+            color: #1a202c;
+        }
+
+        .click-hint {
+            font-size: 11px;
+            color: #888;
+            text-align: center;
+            margin-top: 8px;
+        }
     </style>
 </head>
 <body>
@@ -494,6 +599,18 @@
             </div>
         </div>
 
+        <div class="controls-row">
+            <button id="defectModeBtn" class="btn-secondary toggle-btn">Defect Mode</button>
+            <label class="checkbox-group">
+                <input type="checkbox" id="duplicatesCheckbox">
+                <span>Generate Duplicates</span>
+            </label>
+            <label class="checkbox-group">
+                <input type="checkbox" id="showIdsCheckbox">
+                <span>Show Element IDs</span>
+            </label>
+        </div>
+
         <div class="visualization">
             <div class="panel">
                 <h2>Array Visualization</h2>
@@ -515,7 +632,16 @@
                         <div class="stat-value" id="sortedness">0%</div>
                         <div class="stat-label">Sortedness</div>
                     </div>
+                    <div class="stat">
+                        <div class="stat-value" id="blockedCount">0</div>
+                        <div class="stat-label">Blocked</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="stabilityViolations">0</div>
+                        <div class="stat-label">Stability</div>
+                    </div>
                 </div>
+                <div class="click-hint" id="clickHint" style="display: none;">Click bars to freeze/unfreeze (defect mode)</div>
             </div>
 
             <div class="panel">
@@ -607,12 +733,13 @@
         <div class="hypothesis-panel">
             <h2>Observations & Analysis</h2>
             <div class="hypothesis-content">
-                <p>This visualizer tracks how bubble sort affects elements with different color properties. Key metrics:</p>
+                <p>Inspired by <a href="https://arxiv.org/abs/2401.05375" target="_blank" style="color: #63b3ed;">Levin et al.'s morphogenesis research</a>, this visualizer explores emergent behavior in sorting:</p>
                 <ul style="margin: 10px 0 10px 20px;">
-                    <li><strong>Color Position:</strong> Average index position of red vs green elements over time</li>
-                    <li><strong>Clustering Index:</strong> How grouped together same-colored elements are (0 = dispersed, 1 = fully clustered)</li>
-                    <li><strong>Color Inversions:</strong> Pairs where larger value comes before smaller, split by cross-color vs same-color</li>
-                    <li><strong>Swap Ratio:</strong> Proportion of swaps between different colors vs same colors</li>
+                    <li><strong>Color Position:</strong> Average index position of red vs green elements - do colors "drift"?</li>
+                    <li><strong>Clustering:</strong> How grouped same-colored elements are (0 = dispersed, 1 = clustered)</li>
+                    <li><strong>Defect Mode:</strong> Freeze elements to observe how the algorithm navigates around obstacles</li>
+                    <li><strong>Stability:</strong> With duplicates enabled, track if equal values swap (changing color order)</li>
+                    <li><strong>Blocked:</strong> Swaps prevented by frozen elements - measures defect impact</li>
                 </ul>
                 <div class="observation" id="observations">
                     <div class="observation-title">Real-time Observations</div>
@@ -638,6 +765,7 @@
         let originalArray = [];
         let sorting = false;
         let sortGenerator = null;
+        let defectMode = false;
         let metrics = {
             iterations: [],
             sortedness: [],
@@ -653,7 +781,10 @@
         let stats = {
             iteration: 0,
             comparisons: 0,
-            swaps: 0
+            swaps: 0,
+            blocked: 0,
+            stabilityViolations: 0,
+            equalComparisons: 0
         };
 
         // Chart instances
@@ -665,6 +796,10 @@
         const sortBtn = document.getElementById('sortBtn');
         const stepBtn = document.getElementById('stepBtn');
         const resetBtn = document.getElementById('resetBtn');
+        const defectModeBtn = document.getElementById('defectModeBtn');
+        const duplicatesCheckbox = document.getElementById('duplicatesCheckbox');
+        const showIdsCheckbox = document.getElementById('showIdsCheckbox');
+        const clickHint = document.getElementById('clickHint');
 
         // Initialize charts
         function initCharts() {
@@ -811,16 +946,41 @@
         function generateArray() {
             const size = parseInt(document.getElementById('arraySize').value);
             const seed = parseInt(document.getElementById('seed').value);
+            const useDuplicates = duplicatesCheckbox.checked;
             const rng = mulberry32(seed);
 
             array = [];
-            for (let i = 0; i < size; i++) {
-                array.push({
-                    value: Math.floor(rng() * 100) + 1,
-                    color: rng() > 0.5 ? 'red' : 'green',
-                    id: i
-                });
+
+            if (useDuplicates) {
+                // Generate with intentional duplicates (about 30% duplicates)
+                const uniqueCount = Math.ceil(size * 0.7);
+                const baseValues = [];
+                for (let i = 0; i < uniqueCount; i++) {
+                    baseValues.push(Math.floor(rng() * 50) + 1);
+                }
+
+                for (let i = 0; i < size; i++) {
+                    const valueIndex = Math.floor(rng() * baseValues.length);
+                    array.push({
+                        value: baseValues[valueIndex],
+                        color: rng() > 0.5 ? 'red' : 'green',
+                        id: i,
+                        frozen: false,
+                        originalIndex: i
+                    });
+                }
+            } else {
+                for (let i = 0; i < size; i++) {
+                    array.push({
+                        value: Math.floor(rng() * 100) + 1,
+                        color: rng() > 0.5 ? 'red' : 'green',
+                        id: i,
+                        frozen: false,
+                        originalIndex: i
+                    });
+                }
             }
+
             originalArray = JSON.parse(JSON.stringify(array));
 
             resetMetrics();
@@ -844,21 +1004,54 @@
                 crossColorSwaps: [0],
                 sameColorSwaps: [0]
             };
-            stats = { iteration: 0, comparisons: 0, swaps: 0 };
+            stats = { iteration: 0, comparisons: 0, swaps: 0, blocked: 0, stabilityViolations: 0, equalComparisons: 0 };
+        }
+
+        // Toggle frozen state on click
+        function toggleFrozen(idx) {
+            if (!defectMode || sorting) return;
+            array[idx].frozen = !array[idx].frozen;
+            renderArray();
+        }
+
+        // Find duplicate values in current array
+        function getDuplicateValues() {
+            const counts = {};
+            array.forEach(item => {
+                counts[item.value] = (counts[item.value] || 0) + 1;
+            });
+            return new Set(Object.keys(counts).filter(k => counts[k] > 1).map(Number));
         }
 
         // Render array visualization
-        function renderArray(comparing = [], swapping = []) {
+        function renderArray(comparing = [], swapping = [], blocked = []) {
             const maxValue = Math.max(...array.map(x => x.value));
+            const showIds = showIdsCheckbox.checked;
+            const duplicateValues = getDuplicateValues();
+
             arrayContainer.innerHTML = array.map((item, idx) => {
                 const height = (item.value / maxValue) * 160;
                 let classes = `bar ${item.color}`;
+                if (item.frozen) classes += ' frozen';
                 if (comparing.includes(idx)) classes += ' comparing';
                 if (swapping.includes(idx)) classes += ' swapping';
-                return `<div class="${classes}" style="height: ${height}px">
-                    <span class="bar-value">${item.value}</span>
+                if (blocked.includes(idx)) classes += ' blocked';
+                if (duplicateValues.has(item.value)) classes += ' duplicate';
+
+                const displayText = showIds ? `${item.value}#${item.id}` : item.value;
+
+                return `<div class="${classes}" style="height: ${height}px" data-idx="${idx}">
+                    <span class="bar-value">${displayText}</span>
                 </div>`;
             }).join('');
+
+            // Add click handlers for defect mode
+            if (defectMode) {
+                arrayContainer.querySelectorAll('.bar').forEach(bar => {
+                    bar.style.cursor = 'pointer';
+                    bar.onclick = () => toggleFrozen(parseInt(bar.dataset.idx));
+                });
+            }
         }
 
         // Calculate sortedness (1 - inversion ratio)
@@ -984,6 +1177,15 @@
             document.getElementById('swapCount').textContent = stats.swaps;
             document.getElementById('sortedness').textContent =
                 Math.round(calculateSortedness()) + '%';
+            document.getElementById('blockedCount').textContent = stats.blocked;
+
+            // Stability: show violations / equal comparisons
+            if (stats.equalComparisons > 0) {
+                document.getElementById('stabilityViolations').textContent =
+                    `${stats.stabilityViolations}/${stats.equalComparisons}`;
+            } else {
+                document.getElementById('stabilityViolations').textContent = '0';
+            }
         }
 
         // Update observations
@@ -1023,6 +1225,27 @@
                 }
             }
 
+            // Defect mode observations
+            if (stats.blocked > 0) {
+                const frozenCount = array.filter(x => x.frozen).length;
+                observations.push(`Defects: ${frozenCount} frozen elements caused ${stats.blocked} blocked swaps`);
+            }
+
+            // Stability observations
+            if (stats.equalComparisons > 0) {
+                if (stats.stabilityViolations === 0) {
+                    observations.push(`Stability: ${stats.equalComparisons} equal-value comparisons, all preserved order (stable)`);
+                } else {
+                    observations.push(`Stability: ${stats.stabilityViolations}/${stats.equalComparisons} equal-value pairs changed color order`);
+                }
+            }
+
+            // Duplicate detection
+            const duplicateValues = getDuplicateValues();
+            if (duplicateValues.size > 0) {
+                observations.push(`Duplicates: ${duplicateValues.size} values appear multiple times`);
+            }
+
             document.getElementById('observationText').innerHTML =
                 observations.length > 0
                     ? observations.map(o => `• ${o}`).join('<br>')
@@ -1043,7 +1266,24 @@
                     renderArray([j, j + 1]);
                     yield { type: 'compare', indices: [j, j + 1] };
 
-                    if (array[j].value > array[j + 1].value) {
+                    const needsSwap = array[j].value > array[j + 1].value;
+                    const isEqual = array[j].value === array[j + 1].value;
+
+                    // Track equal value comparisons for stability analysis
+                    if (isEqual) {
+                        stats.equalComparisons++;
+                    }
+
+                    if (needsSwap) {
+                        // Check if either element is frozen
+                        if (array[j].frozen || array[j + 1].frozen) {
+                            stats.blocked++;
+                            renderArray([], [], [j, j + 1]);
+                            updateStats();
+                            yield { type: 'blocked', indices: [j, j + 1] };
+                            continue;
+                        }
+
                         // Determine swap type
                         const swapType = array[j].color !== array[j + 1].color ? 'cross' : 'same';
 
@@ -1057,6 +1297,12 @@
                         updateStats();
                         updateObservations();
                         yield { type: 'swap', indices: [j, j + 1] };
+                    } else if (isEqual && array[j].color !== array[j + 1].color) {
+                        // Equal values with different colors - check stability
+                        // Standard bubble sort is stable: equal elements should NOT swap
+                        // But we can track if original order is being preserved
+                        // A stability violation would be if we intentionally swapped equals
+                        // (which standard bubble sort doesn't do, but we track the comparison)
                     }
                 }
 
@@ -1126,11 +1372,26 @@
             generateBtn.disabled = false;
         }
 
+        // Toggle defect mode
+        function toggleDefectMode() {
+            defectMode = !defectMode;
+            defectModeBtn.classList.toggle('active', defectMode);
+            clickHint.style.display = defectMode ? 'block' : 'none';
+            renderArray();
+        }
+
         // Event listeners
         generateBtn.addEventListener('click', generateArray);
         sortBtn.addEventListener('click', runSort);
         stepBtn.addEventListener('click', stepSort);
         resetBtn.addEventListener('click', resetArray);
+        defectModeBtn.addEventListener('click', toggleDefectMode);
+
+        // Re-render when show IDs changes
+        showIdsCheckbox.addEventListener('change', () => renderArray());
+
+        // Re-generate when duplicates mode changes
+        duplicatesCheckbox.addEventListener('change', generateArray);
 
         // Load Chart.js and initialize
         const script = document.createElement('script');
