@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bubble Sort Color Visualizer</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        @media (max-width: 480px) {
+            body {
+                padding: 10px;
+            }
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #fff;
+            font-size: 1.5rem;
+        }
+
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 1.25rem;
+                margin-bottom: 15px;
+            }
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #16213e;
+            border-radius: 8px;
+        }
+
+        @media (max-width: 480px) {
+            .controls {
+                gap: 10px;
+                padding: 12px;
+            }
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        @media (max-width: 480px) {
+            .control-group {
+                flex: 1 1 calc(50% - 10px);
+                min-width: 0;
+            }
+
+            .control-group:nth-child(n+4) {
+                flex: 1 1 calc(50% - 10px);
+            }
+        }
+
+        .control-group label {
+            font-size: 12px;
+            color: #aaa;
+        }
+
+        @media (max-width: 480px) {
+            .control-group label {
+                display: none;
+            }
+        }
+
+        input, button, select {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        @media (max-width: 480px) {
+            input, button, select {
+                padding: 12px 10px;
+                font-size: 14px;
+                min-height: 44px;
+            }
+        }
+
+        input {
+            background: #0f3460;
+            color: #fff;
+            width: 100px;
+        }
+
+        @media (max-width: 480px) {
+            input {
+                width: 100%;
+            }
+        }
+
+        button {
+            background: #e94560;
+            color: #fff;
+            cursor: pointer;
+            transition: background 0.2s;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 480px) {
+            button {
+                width: 100%;
+                font-size: 13px;
+            }
+        }
+
+        button:hover {
+            background: #ff6b6b;
+        }
+
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #0f3460;
+        }
+
+        .btn-secondary:hover {
+            background: #1a4a7a;
+        }
+
+        .visualization {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .visualization {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .visualization {
+                gap: 15px;
+                margin-bottom: 15px;
+            }
+        }
+
+        .panel {
+            background: #16213e;
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        @media (max-width: 480px) {
+            .panel {
+                padding: 12px;
+            }
+        }
+
+        .panel h2 {
+            font-size: 16px;
+            margin-bottom: 15px;
+            color: #e94560;
+        }
+
+        @media (max-width: 480px) {
+            .panel h2 {
+                font-size: 14px;
+                margin-bottom: 10px;
+            }
+        }
+
+        .array-container {
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            gap: 2px;
+            height: 200px;
+            padding: 10px;
+            background: #0f3460;
+            border-radius: 4px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        @media (max-width: 480px) {
+            .array-container {
+                height: 150px;
+                justify-content: flex-start;
+                padding: 8px;
+            }
+        }
+
+        .bar {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            min-width: 20px;
+            flex: 1;
+            max-width: 40px;
+            transition: height 0.1s, background 0.1s;
+            border-radius: 2px 2px 0 0;
+            position: relative;
+        }
+
+        @media (max-width: 480px) {
+            .bar {
+                min-width: 16px;
+                max-width: 30px;
+                flex: 0 0 auto;
+            }
+        }
+
+        .bar.red {
+            background: linear-gradient(to top, #dc3545, #ff6b6b);
+        }
+
+        .bar.green {
+            background: linear-gradient(to top, #28a745, #5fdd77);
+        }
+
+        .bar.comparing {
+            box-shadow: 0 0 10px #fff, 0 0 20px #fff;
+        }
+
+        .bar.swapping {
+            box-shadow: 0 0 10px #ffd700, 0 0 20px #ffd700;
+        }
+
+        .bar-value {
+            position: absolute;
+            top: -20px;
+            font-size: 10px;
+            color: #aaa;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        @media (max-width: 480px) {
+            .stats {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+                margin-top: 10px;
+            }
+        }
+
+        .stat {
+            background: #0f3460;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        @media (max-width: 480px) {
+            .stat {
+                padding: 8px;
+            }
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #e94560;
+        }
+
+        @media (max-width: 480px) {
+            .stat-value {
+                font-size: 20px;
+            }
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: #aaa;
+            margin-top: 5px;
+        }
+
+        @media (max-width: 480px) {
+            .stat-label {
+                font-size: 10px;
+            }
+        }
+
+        .chart-container {
+            height: 200px;
+            background: #0f3460;
+            border-radius: 4px;
+            padding: 10px;
+            position: relative;
+        }
+
+        @media (max-width: 480px) {
+            .chart-container {
+                height: 180px;
+                padding: 8px;
+            }
+        }
+
+        canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        .legend {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 10px;
+            font-size: 12px;
+            flex-wrap: wrap;
+        }
+
+        @media (max-width: 480px) {
+            .legend {
+                gap: 8px 12px;
+                font-size: 11px;
+            }
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        @media (max-width: 480px) {
+            .legend-item {
+                gap: 4px;
+            }
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+            flex-shrink: 0;
+        }
+
+        @media (max-width: 480px) {
+            .legend-color {
+                width: 10px;
+                height: 10px;
+            }
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .metrics-grid {
+                gap: 15px;
+            }
+        }
+
+        .hypothesis-panel {
+            background: #16213e;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+
+        @media (max-width: 480px) {
+            .hypothesis-panel {
+                padding: 12px;
+                margin-top: 15px;
+            }
+        }
+
+        .hypothesis-panel h2 {
+            color: #e94560;
+            margin-bottom: 10px;
+        }
+
+        .hypothesis-content {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #ccc;
+        }
+
+        @media (max-width: 480px) {
+            .hypothesis-content {
+                font-size: 13px;
+                line-height: 1.5;
+            }
+
+            .hypothesis-content ul {
+                margin-left: 15px !important;
+            }
+        }
+
+        .observation {
+            background: #0f3460;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+
+        @media (max-width: 480px) {
+            .observation {
+                padding: 8px;
+            }
+        }
+
+        .observation-title {
+            color: #e94560;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .speed-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .speed-control input[type="range"] {
+            width: 100px;
+            background: transparent;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Bubble Sort Color Visualizer</h1>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>Array Size</label>
+                <input type="number" id="arraySize" value="20" min="5" max="50" placeholder="Size">
+            </div>
+            <div class="control-group">
+                <label>Random Seed</label>
+                <input type="number" id="seed" value="42" placeholder="Seed">
+            </div>
+            <div class="control-group">
+                <label>Speed (ms)</label>
+                <input type="number" id="speed" value="100" min="10" max="1000" step="10" placeholder="Speed">
+            </div>
+            <div class="control-group">
+                <label>&nbsp;</label>
+                <button id="generateBtn">Generate Array</button>
+            </div>
+            <div class="control-group">
+                <label>&nbsp;</label>
+                <button id="sortBtn">Start Sort</button>
+            </div>
+            <div class="control-group">
+                <label>&nbsp;</label>
+                <button id="stepBtn" class="btn-secondary">Step</button>
+            </div>
+            <div class="control-group">
+                <label>&nbsp;</label>
+                <button id="resetBtn" class="btn-secondary">Reset</button>
+            </div>
+        </div>
+
+        <div class="visualization">
+            <div class="panel">
+                <h2>Array Visualization</h2>
+                <div class="array-container" id="arrayContainer"></div>
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-value" id="iterationCount">0</div>
+                        <div class="stat-label">Iteration</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="comparisonCount">0</div>
+                        <div class="stat-label">Comparisons</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="swapCount">0</div>
+                        <div class="stat-label">Swaps</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="sortedness">0%</div>
+                        <div class="stat-label">Sortedness</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h2>Sortedness Over Time</h2>
+                <div class="chart-container">
+                    <canvas id="sortednessChart"></canvas>
+                </div>
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #e94560;"></div>
+                        <span>Overall Sortedness</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="metrics-grid">
+            <div class="panel">
+                <h2>Color Position Tracking</h2>
+                <div class="chart-container">
+                    <canvas id="colorPositionChart"></canvas>
+                </div>
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #dc3545;"></div>
+                        <span>Avg Red Position</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #28a745;"></div>
+                        <span>Avg Green Position</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h2>Color Clustering Index</h2>
+                <div class="chart-container">
+                    <canvas id="clusteringChart"></canvas>
+                </div>
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #dc3545;"></div>
+                        <span>Red Clustering</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #28a745;"></div>
+                        <span>Green Clustering</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="metrics-grid" style="margin-top: 20px;">
+            <div class="panel">
+                <h2>Color Inversions</h2>
+                <div class="chart-container">
+                    <canvas id="colorInversionChart"></canvas>
+                </div>
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #ffd700;"></div>
+                        <span>Cross-Color Inversions</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #9966ff;"></div>
+                        <span>Same-Color Inversions</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h2>Color Swap Ratio</h2>
+                <div class="chart-container">
+                    <canvas id="swapRatioChart"></canvas>
+                </div>
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #ff9f43;"></div>
+                        <span>Red-Green Swaps</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #00cec9;"></div>
+                        <span>Same-Color Swaps</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="hypothesis-panel">
+            <h2>Observations & Analysis</h2>
+            <div class="hypothesis-content">
+                <p>This visualizer tracks how bubble sort affects elements with different color properties. Key metrics:</p>
+                <ul style="margin: 10px 0 10px 20px;">
+                    <li><strong>Color Position:</strong> Average index position of red vs green elements over time</li>
+                    <li><strong>Clustering Index:</strong> How grouped together same-colored elements are (0 = dispersed, 1 = fully clustered)</li>
+                    <li><strong>Color Inversions:</strong> Pairs where larger value comes before smaller, split by cross-color vs same-color</li>
+                    <li><strong>Swap Ratio:</strong> Proportion of swaps between different colors vs same colors</li>
+                </ul>
+                <div class="observation" id="observations">
+                    <div class="observation-title">Real-time Observations</div>
+                    <div id="observationText">Generate an array and start sorting to see observations...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Seeded random number generator (Mulberry32)
+        function mulberry32(seed) {
+            return function() {
+                let t = seed += 0x6D2B79F5;
+                t = Math.imul(t ^ t >>> 15, t | 1);
+                t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+                return ((t ^ t >>> 14) >>> 0) / 4294967296;
+            };
+        }
+
+        // State
+        let array = [];
+        let originalArray = [];
+        let sorting = false;
+        let sortGenerator = null;
+        let metrics = {
+            iterations: [],
+            sortedness: [],
+            avgRedPosition: [],
+            avgGreenPosition: [],
+            redClustering: [],
+            greenClustering: [],
+            crossColorInversions: [],
+            sameColorInversions: [],
+            crossColorSwaps: [],
+            sameColorSwaps: []
+        };
+        let stats = {
+            iteration: 0,
+            comparisons: 0,
+            swaps: 0
+        };
+
+        // Chart instances
+        let sortednessChart, colorPositionChart, clusteringChart, colorInversionChart, swapRatioChart;
+
+        // DOM Elements
+        const arrayContainer = document.getElementById('arrayContainer');
+        const generateBtn = document.getElementById('generateBtn');
+        const sortBtn = document.getElementById('sortBtn');
+        const stepBtn = document.getElementById('stepBtn');
+        const resetBtn = document.getElementById('resetBtn');
+
+        // Initialize charts
+        function initCharts() {
+            const commonOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 0 },
+                scales: {
+                    x: {
+                        display: true,
+                        grid: { color: '#1a3a5c' },
+                        ticks: { color: '#888' }
+                    },
+                    y: {
+                        display: true,
+                        grid: { color: '#1a3a5c' },
+                        ticks: { color: '#888' }
+                    }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            };
+
+            sortednessChart = new Chart(document.getElementById('sortednessChart'), {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        borderColor: '#e94560',
+                        backgroundColor: 'rgba(233, 69, 96, 0.1)',
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    ...commonOptions,
+                    scales: {
+                        ...commonOptions.scales,
+                        y: { ...commonOptions.scales.y, min: 0, max: 100 }
+                    }
+                }
+            });
+
+            colorPositionChart = new Chart(document.getElementById('colorPositionChart'), {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            data: [],
+                            borderColor: '#dc3545',
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            fill: false,
+                            tension: 0.3
+                        },
+                        {
+                            data: [],
+                            borderColor: '#28a745',
+                            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                            fill: false,
+                            tension: 0.3
+                        }
+                    ]
+                },
+                options: commonOptions
+            });
+
+            clusteringChart = new Chart(document.getElementById('clusteringChart'), {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            data: [],
+                            borderColor: '#dc3545',
+                            fill: false,
+                            tension: 0.3
+                        },
+                        {
+                            data: [],
+                            borderColor: '#28a745',
+                            fill: false,
+                            tension: 0.3
+                        }
+                    ]
+                },
+                options: {
+                    ...commonOptions,
+                    scales: {
+                        ...commonOptions.scales,
+                        y: { ...commonOptions.scales.y, min: 0, max: 1 }
+                    }
+                }
+            });
+
+            colorInversionChart = new Chart(document.getElementById('colorInversionChart'), {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            data: [],
+                            borderColor: '#ffd700',
+                            fill: false,
+                            tension: 0.3
+                        },
+                        {
+                            data: [],
+                            borderColor: '#9966ff',
+                            fill: false,
+                            tension: 0.3
+                        }
+                    ]
+                },
+                options: commonOptions
+            });
+
+            swapRatioChart = new Chart(document.getElementById('swapRatioChart'), {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            data: [],
+                            borderColor: '#ff9f43',
+                            fill: false,
+                            tension: 0.3
+                        },
+                        {
+                            data: [],
+                            borderColor: '#00cec9',
+                            fill: false,
+                            tension: 0.3
+                        }
+                    ]
+                },
+                options: commonOptions
+            });
+        }
+
+        // Generate array with colored numbers
+        function generateArray() {
+            const size = parseInt(document.getElementById('arraySize').value);
+            const seed = parseInt(document.getElementById('seed').value);
+            const rng = mulberry32(seed);
+
+            array = [];
+            for (let i = 0; i < size; i++) {
+                array.push({
+                    value: Math.floor(rng() * 100) + 1,
+                    color: rng() > 0.5 ? 'red' : 'green',
+                    id: i
+                });
+            }
+            originalArray = JSON.parse(JSON.stringify(array));
+
+            resetMetrics();
+            renderArray();
+            recordMetrics();
+            updateStats();
+            updateObservations();
+        }
+
+        // Reset metrics
+        function resetMetrics() {
+            metrics = {
+                iterations: [],
+                sortedness: [],
+                avgRedPosition: [],
+                avgGreenPosition: [],
+                redClustering: [],
+                greenClustering: [],
+                crossColorInversions: [],
+                sameColorInversions: [],
+                crossColorSwaps: [0],
+                sameColorSwaps: [0]
+            };
+            stats = { iteration: 0, comparisons: 0, swaps: 0 };
+        }
+
+        // Render array visualization
+        function renderArray(comparing = [], swapping = []) {
+            const maxValue = Math.max(...array.map(x => x.value));
+            arrayContainer.innerHTML = array.map((item, idx) => {
+                const height = (item.value / maxValue) * 160;
+                let classes = `bar ${item.color}`;
+                if (comparing.includes(idx)) classes += ' comparing';
+                if (swapping.includes(idx)) classes += ' swapping';
+                return `<div class="${classes}" style="height: ${height}px">
+                    <span class="bar-value">${item.value}</span>
+                </div>`;
+            }).join('');
+        }
+
+        // Calculate sortedness (1 - inversion ratio)
+        function calculateSortedness() {
+            let inversions = 0;
+            const n = array.length;
+            const maxInversions = (n * (n - 1)) / 2;
+
+            for (let i = 0; i < n; i++) {
+                for (let j = i + 1; j < n; j++) {
+                    if (array[i].value > array[j].value) {
+                        inversions++;
+                    }
+                }
+            }
+
+            return maxInversions > 0 ? ((1 - inversions / maxInversions) * 100) : 100;
+        }
+
+        // Calculate average position for a color
+        function calculateAvgPosition(color) {
+            const items = array.map((item, idx) => ({ ...item, idx }))
+                               .filter(item => item.color === color);
+            if (items.length === 0) return 0;
+            return items.reduce((sum, item) => sum + item.idx, 0) / items.length;
+        }
+
+        // Calculate clustering index for a color (how grouped together same-colored elements are)
+        function calculateClustering(color) {
+            const positions = array.map((item, idx) => item.color === color ? idx : -1)
+                                   .filter(idx => idx !== -1);
+            if (positions.length <= 1) return 1;
+
+            // Calculate average distance between consecutive same-colored elements
+            let totalGap = 0;
+            for (let i = 1; i < positions.length; i++) {
+                totalGap += positions[i] - positions[i - 1] - 1;
+            }
+            const avgGap = totalGap / (positions.length - 1);
+
+            // Perfect clustering = 0 gap, worst case = elements at opposite ends
+            const maxPossibleGap = (array.length - positions.length) / (positions.length - 1);
+            return maxPossibleGap > 0 ? 1 - (avgGap / maxPossibleGap) : 1;
+        }
+
+        // Calculate inversions by color type
+        function calculateColorInversions() {
+            let crossColor = 0;
+            let sameColor = 0;
+
+            for (let i = 0; i < array.length; i++) {
+                for (let j = i + 1; j < array.length; j++) {
+                    if (array[i].value > array[j].value) {
+                        if (array[i].color !== array[j].color) {
+                            crossColor++;
+                        } else {
+                            sameColor++;
+                        }
+                    }
+                }
+            }
+
+            return { crossColor, sameColor };
+        }
+
+        // Record current metrics
+        function recordMetrics(swapType = null) {
+            metrics.iterations.push(stats.iteration);
+            metrics.sortedness.push(calculateSortedness());
+            metrics.avgRedPosition.push(calculateAvgPosition('red'));
+            metrics.avgGreenPosition.push(calculateAvgPosition('green'));
+            metrics.redClustering.push(calculateClustering('red'));
+            metrics.greenClustering.push(calculateClustering('green'));
+
+            const inversions = calculateColorInversions();
+            metrics.crossColorInversions.push(inversions.crossColor);
+            metrics.sameColorInversions.push(inversions.sameColor);
+
+            if (swapType === 'cross') {
+                metrics.crossColorSwaps.push((metrics.crossColorSwaps.at(-1) || 0) + 1);
+                metrics.sameColorSwaps.push(metrics.sameColorSwaps.at(-1) || 0);
+            } else if (swapType === 'same') {
+                metrics.crossColorSwaps.push(metrics.crossColorSwaps.at(-1) || 0);
+                metrics.sameColorSwaps.push((metrics.sameColorSwaps.at(-1) || 0) + 1);
+            }
+
+            updateCharts();
+        }
+
+        // Update all charts
+        function updateCharts() {
+            const labels = metrics.iterations;
+
+            sortednessChart.data.labels = labels;
+            sortednessChart.data.datasets[0].data = metrics.sortedness;
+            sortednessChart.update('none');
+
+            colorPositionChart.data.labels = labels;
+            colorPositionChart.data.datasets[0].data = metrics.avgRedPosition;
+            colorPositionChart.data.datasets[1].data = metrics.avgGreenPosition;
+            colorPositionChart.update('none');
+
+            clusteringChart.data.labels = labels;
+            clusteringChart.data.datasets[0].data = metrics.redClustering;
+            clusteringChart.data.datasets[1].data = metrics.greenClustering;
+            clusteringChart.update('none');
+
+            colorInversionChart.data.labels = labels;
+            colorInversionChart.data.datasets[0].data = metrics.crossColorInversions;
+            colorInversionChart.data.datasets[1].data = metrics.sameColorInversions;
+            colorInversionChart.update('none');
+
+            swapRatioChart.data.labels = labels;
+            swapRatioChart.data.datasets[0].data = metrics.crossColorSwaps;
+            swapRatioChart.data.datasets[1].data = metrics.sameColorSwaps;
+            swapRatioChart.update('none');
+        }
+
+        // Update stats display
+        function updateStats() {
+            document.getElementById('iterationCount').textContent = stats.iteration;
+            document.getElementById('comparisonCount').textContent = stats.comparisons;
+            document.getElementById('swapCount').textContent = stats.swaps;
+            document.getElementById('sortedness').textContent =
+                Math.round(calculateSortedness()) + '%';
+        }
+
+        // Update observations
+        function updateObservations() {
+            const observations = [];
+
+            if (metrics.sortedness.length > 1) {
+                const sortednessChange = metrics.sortedness.at(-1) - metrics.sortedness[0];
+                observations.push(`Sortedness improved by ${sortednessChange.toFixed(1)}%`);
+            }
+
+            if (metrics.crossColorSwaps.length > 1) {
+                const crossSwaps = metrics.crossColorSwaps.at(-1);
+                const sameSwaps = metrics.sameColorSwaps.at(-1);
+                const total = crossSwaps + sameSwaps;
+                if (total > 0) {
+                    const crossRatio = (crossSwaps / total * 100).toFixed(1);
+                    observations.push(`${crossRatio}% of swaps are between different colors`);
+                }
+            }
+
+            const redCluster = metrics.redClustering.at(-1);
+            const greenCluster = metrics.greenClustering.at(-1);
+            if (redCluster !== undefined) {
+                observations.push(`Red clustering: ${(redCluster * 100).toFixed(1)}%, Green: ${(greenCluster * 100).toFixed(1)}%`);
+            }
+
+            // Check for emergent patterns
+            if (metrics.avgRedPosition.length > 5) {
+                const redTrend = metrics.avgRedPosition.at(-1) - metrics.avgRedPosition[0];
+                const greenTrend = metrics.avgGreenPosition.at(-1) - metrics.avgGreenPosition[0];
+
+                if (Math.abs(redTrend) > 1 || Math.abs(greenTrend) > 1) {
+                    const redDir = redTrend > 0 ? 'rightward' : 'leftward';
+                    const greenDir = greenTrend > 0 ? 'rightward' : 'leftward';
+                    observations.push(`Color drift detected: Red moving ${redDir}, Green moving ${greenDir}`);
+                }
+            }
+
+            document.getElementById('observationText').innerHTML =
+                observations.length > 0
+                    ? observations.map(o => `• ${o}`).join('<br>')
+                    : 'Sorting not started yet...';
+        }
+
+        // Bubble sort generator
+        function* bubbleSortGenerator() {
+            const n = array.length;
+            let swapped;
+
+            for (let i = 0; i < n - 1; i++) {
+                swapped = false;
+                stats.iteration = i + 1;
+
+                for (let j = 0; j < n - i - 1; j++) {
+                    stats.comparisons++;
+                    renderArray([j, j + 1]);
+                    yield { type: 'compare', indices: [j, j + 1] };
+
+                    if (array[j].value > array[j + 1].value) {
+                        // Determine swap type
+                        const swapType = array[j].color !== array[j + 1].color ? 'cross' : 'same';
+
+                        // Swap
+                        [array[j], array[j + 1]] = [array[j + 1], array[j]];
+                        stats.swaps++;
+                        swapped = true;
+
+                        renderArray([], [j, j + 1]);
+                        recordMetrics(swapType);
+                        updateStats();
+                        updateObservations();
+                        yield { type: 'swap', indices: [j, j + 1] };
+                    }
+                }
+
+                renderArray();
+
+                if (!swapped) {
+                    break;
+                }
+            }
+
+            renderArray();
+            return { done: true };
+        }
+
+        // Run sort animation
+        async function runSort() {
+            if (sorting) return;
+
+            sorting = true;
+            sortBtn.disabled = true;
+            stepBtn.disabled = true;
+            generateBtn.disabled = true;
+
+            sortGenerator = bubbleSortGenerator();
+            const speed = parseInt(document.getElementById('speed').value);
+
+            let result = sortGenerator.next();
+            while (!result.done && sorting) {
+                await new Promise(resolve => setTimeout(resolve, speed));
+                result = sortGenerator.next();
+            }
+
+            sorting = false;
+            sortBtn.disabled = false;
+            stepBtn.disabled = false;
+            generateBtn.disabled = false;
+            renderArray();
+        }
+
+        // Step through sort
+        function stepSort() {
+            if (!sortGenerator) {
+                sortGenerator = bubbleSortGenerator();
+            }
+
+            const result = sortGenerator.next();
+            if (result.done) {
+                sortGenerator = null;
+                renderArray();
+            }
+            updateStats();
+        }
+
+        // Reset to original array
+        function resetArray() {
+            sorting = false;
+            sortGenerator = null;
+            array = JSON.parse(JSON.stringify(originalArray));
+            resetMetrics();
+            renderArray();
+            recordMetrics();
+            updateStats();
+            updateObservations();
+
+            sortBtn.disabled = false;
+            stepBtn.disabled = false;
+            generateBtn.disabled = false;
+        }
+
+        // Event listeners
+        generateBtn.addEventListener('click', generateArray);
+        sortBtn.addEventListener('click', runSort);
+        stepBtn.addEventListener('click', stepSort);
+        resetBtn.addEventListener('click', resetArray);
+
+        // Load Chart.js and initialize
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+        script.onload = () => {
+            initCharts();
+            generateArray();
+        };
+        document.head.appendChild(script);
+    </script>
+</body>
+</html>

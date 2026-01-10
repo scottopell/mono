@@ -20,6 +20,10 @@ sites:
       - "npm ci"
       - "npm run build"
 
+  - name: bubble-sort-visualizer
+    path: bubble-sort-visualizer
+    description: "Bubble sort visualization with color-tagged elements and metrics tracking"
+
   # Add more static sites here:
   # - name: another-app
   #   path: another-app
