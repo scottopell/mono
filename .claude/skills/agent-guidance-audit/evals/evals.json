@@ -1,0 +1,17 @@
+{
+  "skill_name": "agent-guidance-audit",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Review all the agent-facing guidance in this project. I want to see exactly what text agents receive when they use taskmd as a tool.",
+      "expected_output": "Labeled snippets from: agent.py schema guidance section, agent.py schema workflows, agent.py schema task_format, cli.py help text, README.md usage sections. Should NOT include AGENTS.md contributor guidance. Should flag any inconsistencies between sources.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "What do agents see when they use this project?",
+      "expected_output": "Same as eval 1 but triggered from a vaguer prompt. Should still identify taskmd as a CLI tool, find the --help --agent schema output, and present the consumer-facing guidance with source references.",
+      "files": []
+    }
+  ]
+}
