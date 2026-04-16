@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Hotspot — a geological idle game (MVP)</title>
+<style>
+  :root {
+    --bg: #15181e;
+    --panel: #1e222a;
+    --panel-hi: #262b34;
+    --text: #e6e4dc;
+    --muted: #8a8f99;
+    --accent: #d97538;
+    --danger: #b23b2a;
+    --good: #7fcfa0;
+    --sweet: #5fa37a;
+    --gold: #c8a24a;
+    --calm: #b8a480;
+    --moderate: #8a6a45;
+    --violent: #6d2b1c;
+    --band-sweet: #3d6b4e;
+    --band-below: #4a5a6b;
+    --band-above: #7a2a1e;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, "SF Pro Text", "Segoe UI", Roboto, sans-serif; }
+  body { min-height: 100vh; display: flex; flex-direction: column; }
+
+  header {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 14px 22px; border-bottom: 1px solid #2a2f38;
+    background: var(--panel);
+  }
+  header h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: 0.02em; }
+  header .meta { display: flex; gap: 18px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  header .meta strong { color: var(--text); font-weight: 500; }
+
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(360px, 1fr) minmax(260px, 360px);
+    gap: 18px;
+    padding: 18px 22px;
+    max-width: 1100px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid #2a2f38;
+    border-radius: 6px;
+    padding: 16px;
+  }
+  .panel + .panel { margin-top: 14px; }
+  .panel h2 {
+    margin: 0 0 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .gauge-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .gauge-label strong { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+  .bar {
+    position: relative;
+    height: 18px;
+    background: #11141a;
+    border: 1px solid #2a2f38;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    position: absolute; top: 0; left: 0; bottom: 0;
+    transition: width 0.25s ease-out, background 0.25s;
+  }
+  .pressure-fill { background: linear-gradient(90deg, #7a8c6a 0%, #c8a24a 50%, var(--danger) 100%); }
+  .stability-fill { background: linear-gradient(90deg, #3a5a6e 0%, var(--good) 100%); }
+
+  .bar.critical { box-shadow: 0 0 0 1px var(--danger); animation: pulse 0.9s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 1px var(--danger); } 50% { box-shadow: 0 0 0 2px var(--danger), 0 0 10px var(--danger); } }
+
+  .countdown {
+    margin-top: 8px;
+    color: var(--danger);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+  }
+
+  /* Outcome preview */
+  .preview-track {
+    position: relative;
+    height: 28px;
+    background: #11141a;
+    border: 1px solid #2a2f38;
+    border-radius: 3px;
+    margin-top: 6px;
+  }
+  .preview-track .scale-marker {
+    position: absolute; top: 0; bottom: 0;
+    width: 1px; background: #2a2f38;
+    pointer-events: none;
+  }
+  .preview-track .scale-label {
+    position: absolute; bottom: -16px;
+    font-size: 10px; color: var(--muted);
+    transform: translateX(-50%);
+  }
+  .sweet-spot {
+    position: absolute; top: 0; bottom: 0;
+    background: rgba(95, 163, 122, 0.18);
+    border-left: 1px dashed var(--sweet);
+    border-right: 1px dashed var(--sweet);
+  }
+  .preview-range {
+    position: absolute; top: 4px; bottom: 4px;
+    background: rgba(217, 117, 56, 0.35);
+    border-radius: 2px;
+    transition: left 0.25s, width 0.25s;
+  }
+  .preview-center {
+    position: absolute; top: 0; bottom: 0; width: 2px;
+    background: var(--accent);
+    transition: left 0.25s;
+  }
+  .preview-legend {
+    margin-top: 22px;
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .preview-legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+
+  .release-btn {
+    margin-top: 14px;
+    display: block; width: 100%;
+    padding: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    background: var(--accent);
+    color: #15181e;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.05s;
+  }
+  .release-btn:hover:not(:disabled) { background: #e38444; }
+  .release-btn:active:not(:disabled) { transform: translateY(1px); }
+  .release-btn:disabled { background: #2a2f38; color: var(--muted); cursor: not-allowed; }
+
+  .richness {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .richness strong { color: var(--gold); font-weight: 600; }
+
+  /* Log */
+  .log { margin: 0; padding: 0; list-style: none; font-size: 12px; max-height: 180px; overflow-y: auto; }
+  .log li {
+    padding: 6px 0;
+    border-top: 1px solid #22262e;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .log li:first-child { border-top: none; color: var(--text); }
+  .log .t { color: var(--gold); margin-right: 6px; }
+  .log .epoch-marker { color: var(--gold); font-weight: 600; }
+
+  /* Cross-section */
+  .cross-section-wrap { display: flex; flex-direction: column; height: 100%; }
+  .cross-section {
+    flex: 1;
+    background: #0e1015;
+    border: 1px solid #2a2f38;
+    border-radius: 4px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column-reverse; /* oldest at bottom (appended first = visually bottom) */
+    padding: 6px;
+    min-height: 400px;
+    max-height: 70vh;
+  }
+  .cross-section .empty {
+    color: var(--muted);
+    font-style: italic;
+    text-align: center;
+    padding: 40px 10px;
+    font-size: 12px;
+  }
+  .stratum {
+    width: 100%;
+    border-radius: 2px;
+    margin-top: 2px;
+    position: relative;
+    cursor: help;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(0,0,0,0.25);
+  }
+  .stratum.tier-calm { background: var(--calm); }
+  .stratum.tier-moderate { background: var(--moderate); }
+  .stratum.tier-violent { background: var(--violent); }
+  .stratum.band-above { border-left: 3px solid var(--danger); }
+  .stratum.band-sweet { border-left: 3px solid var(--good); }
+  .stratum.band-below { border-left: 3px solid var(--muted); }
+  .epoch-boundary {
+    padding: 6px 8px;
+    margin: 6px 0;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--gold);
+    border-top: 1px dashed var(--gold);
+    border-bottom: 1px dashed var(--gold);
+    text-align: center;
+  }
+
+  .done-banner {
+    margin-top: 14px;
+    padding: 12px;
+    border: 1px solid var(--gold);
+    border-radius: 4px;
+    background: rgba(200, 162, 74, 0.08);
+    color: var(--gold);
+    font-size: 12px;
+    text-align: center;
+    line-height: 1.6;
+  }
+  .done-banner button {
+    margin-top: 8px;
+    background: transparent;
+    color: var(--gold);
+    border: 1px solid var(--gold);
+    padding: 6px 14px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+  }
+
+  footer {
+    padding: 8px 22px;
+    color: var(--muted);
+    font-size: 11px;
+    border-top: 1px solid #2a2f38;
+    text-align: center;
+  }
+
+  @media (max-width: 780px) {
+    main { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Hotspot <span style="color:var(--muted);font-weight:400;font-size:12px">&nbsp;— MVP</span></h1>
+  <div class="meta">
+    <div>Epoch <strong id="epoch">I</strong> <span id="epochName" style="color:var(--muted)"></span></div>
+    <div>T+<strong id="time">0</strong>s</div>
+  </div>
+</header>
+
+<main>
+  <div>
+    <section class="panel">
+      <h2>Pressure</h2>
+      <div class="gauge-label">
+        <span>Magma accumulation</span>
+        <strong><span id="pressureValue">0</span> / 100</strong>
+      </div>
+      <div class="bar" id="pressureBar">
+        <div class="bar-fill pressure-fill" id="pressureFill" style="width:0%"></div>
+      </div>
+      <div class="countdown" id="countdown" style="display:none"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Outcome if released now</h2>
+      <div class="preview-track" id="previewTrack">
+        <div class="sweet-spot" id="sweetSpot"></div>
+        <div class="preview-range" id="previewRange"></div>
+        <div class="preview-center" id="previewCenter"></div>
+        <!-- scale markers -->
+        <div class="scale-marker" style="left:0%"></div>
+        <div class="scale-marker" style="left:25%"></div>
+        <div class="scale-marker" style="left:50%"></div>
+        <div class="scale-marker" style="left:75%"></div>
+        <div class="scale-marker" style="left:100%"></div>
+        <div class="scale-label" style="left:0%">0</div>
+        <div class="scale-label" style="left:50%">75</div>
+        <div class="scale-label" style="left:100%">150</div>
+      </div>
+      <div class="preview-legend">
+        <span><span class="swatch" style="background:rgba(95,163,122,0.5);border:1px dashed var(--sweet)"></span>sweet spot (fills stability)</span>
+        <span><span class="swatch" style="background:rgba(217,117,56,0.5)"></span>possible outcome</span>
+        <span><span class="swatch" style="background:var(--accent)"></span>expected</span>
+      </div>
+      <button class="release-btn" id="releaseBtn" disabled>Release pressure</button>
+      <div class="richness">
+        Rich strata carried forward: <strong id="richness">0</strong>
+        <span id="richnessBonus" style="display:none">&nbsp;(+<span id="richnessBonusVal">0</span> to every outcome this epoch)</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Stability</h2>
+      <div class="gauge-label">
+        <span>Toward natural resting state of this epoch</span>
+        <strong><span id="stabilityValue">0</span> / 100</strong>
+      </div>
+      <div class="bar">
+        <div class="bar-fill stability-fill" id="stabilityFill" style="width:0%"></div>
+      </div>
+      <div id="doneBanner" class="done-banner" style="display:none">
+        Your planet has found rest. Epochs survived: <strong id="doneEpochs">—</strong>.
+        Rich strata laid down: <strong id="doneRich">—</strong>.
+        Releases: <strong id="doneReleases">—</strong> (<strong id="doneSelf">—</strong> self-released).
+        <br>
+        <button onclick="location.reload()">Begin another planet</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Log</h2>
+      <ul class="log" id="log">
+        <li>T+0s · The planet begins. Magma builds beneath the crust.</li>
+      </ul>
+    </section>
+  </div>
+
+  <aside class="cross-section-wrap">
+    <section class="panel" style="display:flex;flex-direction:column;flex:1">
+      <h2>Cross-section</h2>
+      <div class="cross-section" id="strata">
+        <div class="empty">No strata yet. Release pressure to lay down the first layer.</div>
+      </div>
+    </section>
+  </aside>
+</main>
+
+<footer>
+  Time always passes. All change is permanent. Pressure always releases — with or without you.
+</footer>
+
+<script>
+  // ─── Tuning knobs ─────────────────────────────────────────────
+  const TICK_MS = 1000;
+  const PRESSURE_MAX = 100;
+  const PRESSURE_PER_TICK = 2;
+  const RELEASE_MIN_PRESSURE = 20;
+  const POST_RELEASE_PRESSURE = 5;
+  const STABILITY_MAX = 100;
+  const AUTO_RELEASE_COUNTDOWN = 5;
+  const OUTCOME_DISPLAY_MAX = 150; // preview track scale
+
+  // Per-epoch rules. This is the one thing that actually changes between epochs.
+  const EPOCH_RULES = {
+    1: { name: "Primordial", sweetSpot: [35, 75], richnessBonus: 0 },
+    2: { name: "Maturing",   sweetSpot: [65, 105], richnessBonus: 3 },
+  };
+  const FINAL_EPOCH = 2;
+
+  // ─── State ────────────────────────────────────────────────────
+  const state = {
+    t: 0,
+    epoch: 1,
+    pressure: 0,
+    stability: 0,
+    strata: [],        // {boundary? | epoch, pressureAtRelease, outcome, tier, band, t, thickness}
+    log: [{ t: 0, msg: "The planet begins. Magma builds beneath the crust." }],
+    autoCountdown: null,
+    done: false,
+    releases: 0,
+    selfReleases: 0,
+  };
+
+  const rules = () => EPOCH_RULES[state.epoch];
+  const richness = () => state.strata.filter(s => !s.boundary && s.pressureAtRelease >= 70).length;
+
+  function previewOutcome(pressure) {
+    const center = pressure;
+    const halfWidth = pressure * 0.4;
+    const bonus = rules().richnessBonus * richness();
+    return {
+      lo: Math.max(0, center - halfWidth) + bonus,
+      hi: center + halfWidth + bonus,
+      center: center + bonus,
+    };
+  }
+
+  function roll(pressure) {
+    // Triangular distribution: sum of two uniforms ≈ tent shape peaked at center.
+    const u = (Math.random() + Math.random()) / 2;
+    const center = pressure;
+    const halfWidth = pressure * 0.4;
+    const bonus = rules().richnessBonus * richness();
+    const raw = center - halfWidth + u * 2 * halfWidth;
+    return Math.max(0, raw) + bonus;
+  }
+
+  function classifyOutcome(outcome) {
+    const [lo, hi] = rules().sweetSpot;
+    if (outcome < lo) return "below";
+    if (outcome > hi) return "above";
+    return "sweet";
+  }
+
+  function tierForRelease(pressureAtRelease) {
+    if (pressureAtRelease >= 70) return "violent";
+    if (pressureAtRelease >= 45) return "moderate";
+    return "calm";
+  }
+
+  function logMsg(msg, markerEpoch) {
+    state.log.unshift({ t: state.t, msg, markerEpoch });
+    if (state.log.length > 40) state.log.length = 40;
+  }
+
+  function release(isAuto) {
+    if (state.done) return;
+    if (!isAuto && state.pressure < RELEASE_MIN_PRESSURE) return;
+
+    const pressureAtRelease = Math.round(state.pressure);
+    const outcome = roll(pressureAtRelease);
+    const tier = tierForRelease(pressureAtRelease);
+    const band = classifyOutcome(outcome);
+
+    let dStab;
+    if (band === "sweet") dStab = 12;
+    else if (band === "below") dStab = 3;
+    else dStab = -5;
+
+    state.stability = Math.max(0, Math.min(STABILITY_MAX, state.stability + dStab));
+    state.strata.push({
+      epoch: state.epoch,
+      pressureAtRelease,
+      outcome,
+      tier,
+      band,
+      t: state.t,
+      thickness: Math.round(6 + pressureAtRelease * 0.35), // ~6..41 px
+    });
+
+    state.releases += 1;
+    if (isAuto) state.selfReleases += 1;
+
+    const verb = isAuto ? "The planet released itself" : "You released";
+    const outcomeTxt = outcome.toFixed(1);
+    const descriptor = band === "sweet"
+      ? `found rhythm  (stability +${dStab})`
+      : band === "below"
+      ? `modest flow  (stability +${dStab})`
+      : `violent, destabilizing  (stability ${dStab})`;
+    logMsg(`${verb} at pressure ${pressureAtRelease} → outcome ${outcomeTxt}. ${descriptor}.`);
+
+    state.pressure = POST_RELEASE_PRESSURE;
+    state.autoCountdown = null;
+
+    if (state.stability >= STABILITY_MAX) {
+      if (state.epoch < FINAL_EPOCH) {
+        advanceEpoch();
+      } else {
+        state.done = true;
+        logMsg(`The planet has settled into a stable ${rules().name.toLowerCase()} resting state. ${richness()} rich strata record its history.`);
+      }
+    }
+  }
+
+  function advanceEpoch() {
+    state.epoch += 1;
+    state.stability = 0;
+    const r = rules();
+    state.strata.push({ boundary: true, epoch: state.epoch });
+    const bonus = r.richnessBonus * richness();
+    logMsg(
+      `Epoch ${toRoman(state.epoch)} (${r.name}) begins. Sweet spot shifts to ${r.sweetSpot[0]}–${r.sweetSpot[1]}. ` +
+      `Rich geology from before now amplifies every release: +${bonus} from ${richness()} rich strata.`,
+      state.epoch
+    );
+  }
+
+  function tick() {
+    if (state.done) { render(); return; }
+    state.t += 1;
+
+    if (state.pressure >= PRESSURE_MAX) {
+      // Pressure at max. Start/advance self-release countdown.
+      if (state.autoCountdown === null) {
+        state.autoCountdown = AUTO_RELEASE_COUNTDOWN;
+        logMsg(`Pressure critical. The planet will release on its own in ${AUTO_RELEASE_COUNTDOWN}s.`);
+      } else {
+        state.autoCountdown -= 1;
+        if (state.autoCountdown <= 0) {
+          release(true);
+        }
+      }
+    } else {
+      state.pressure = Math.min(PRESSURE_MAX, state.pressure + PRESSURE_PER_TICK);
+    }
+
+    render();
+  }
+
+  // ─── Rendering ────────────────────────────────────────────────
+  function toRoman(n) { return ["","I","II","III","IV"][n] || String(n); }
+
+  const $ = id => document.getElementById(id);
+
+  function render() {
+    $("epoch").textContent = toRoman(state.epoch);
+    $("epochName").textContent = "· " + rules().name;
+    $("time").textContent = state.t;
+
+    // Pressure
+    $("pressureFill").style.width = state.pressure + "%";
+    $("pressureValue").textContent = Math.round(state.pressure);
+    $("pressureBar").classList.toggle("critical", state.pressure >= 90);
+
+    // Countdown
+    if (state.autoCountdown !== null) {
+      $("countdown").style.display = "block";
+      $("countdown").textContent = `⚠ Self-release in ${state.autoCountdown}s`;
+    } else {
+      $("countdown").style.display = "none";
+    }
+
+    // Preview
+    const p = previewOutcome(state.pressure);
+    const toPct = v => Math.max(0, Math.min(100, (v / OUTCOME_DISPLAY_MAX) * 100));
+    $("previewRange").style.left = toPct(p.lo) + "%";
+    $("previewRange").style.width = Math.max(0, toPct(p.hi) - toPct(p.lo)) + "%";
+    $("previewCenter").style.left = toPct(p.center) + "%";
+    const [sLo, sHi] = rules().sweetSpot;
+    $("sweetSpot").style.left = toPct(sLo) + "%";
+    $("sweetSpot").style.width = (toPct(sHi) - toPct(sLo)) + "%";
+
+    // Stability
+    $("stabilityFill").style.width = state.stability + "%";
+    $("stabilityValue").textContent = Math.round(state.stability);
+
+    // Release button
+    const btn = $("releaseBtn");
+    btn.disabled = state.pressure < RELEASE_MIN_PRESSURE || state.done;
+    btn.textContent = state.done
+      ? "Planet at rest"
+      : state.pressure < RELEASE_MIN_PRESSURE
+        ? `Pressure too low (need ${RELEASE_MIN_PRESSURE})`
+        : "Release pressure";
+
+    // Richness
+    const r = richness();
+    $("richness").textContent = r;
+    if (state.epoch > 1 && rules().richnessBonus > 0) {
+      $("richnessBonus").style.display = "inline";
+      $("richnessBonusVal").textContent = r * rules().richnessBonus;
+    } else {
+      $("richnessBonus").style.display = "none";
+    }
+
+    // Strata: column-reverse means first child appears at bottom. So appending
+    // pushes newer on top visually. Good.
+    const strataEl = $("strata");
+    strataEl.innerHTML = "";
+    if (state.strata.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "No strata yet. Release pressure to lay down the first layer.";
+      strataEl.appendChild(empty);
+    } else {
+      for (const s of state.strata) {
+        if (s.boundary) {
+          const b = document.createElement("div");
+          b.className = "epoch-boundary";
+          b.textContent = `— Epoch ${toRoman(s.epoch)} —`;
+          strataEl.appendChild(b);
+        } else {
+          const layer = document.createElement("div");
+          layer.className = `stratum tier-${s.tier} band-${s.band}`;
+          layer.style.height = s.thickness + "px";
+          layer.title =
+            `T+${s.t}s · Epoch ${toRoman(s.epoch)} · pressure ${s.pressureAtRelease}\n` +
+            `outcome ${s.outcome.toFixed(1)} (${s.band}) · tier ${s.tier}`;
+          strataEl.appendChild(layer);
+        }
+      }
+    }
+
+    // Log
+    const logEl = $("log");
+    logEl.innerHTML = state.log.map(e => {
+      const cls = e.markerEpoch ? "epoch-marker" : "";
+      return `<li class="${cls}"><span class="t">T+${e.t}s</span>${escapeHtml(e.msg)}</li>`;
+    }).join("");
+
+    // Done banner
+    if (state.done) {
+      $("doneBanner").style.display = "block";
+      $("doneEpochs").textContent = state.epoch;
+      $("doneRich").textContent = richness();
+      $("doneReleases").textContent = state.releases;
+      $("doneSelf").textContent = state.selfReleases;
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+  }
+
+  // ─── Boot ─────────────────────────────────────────────────────
+  $("releaseBtn").addEventListener("click", () => release(false));
+  // Spacebar = release (nice for feel-testing)
+  document.addEventListener("keydown", e => {
+    if (e.code === "Space" && !e.repeat && document.activeElement.tagName !== "BUTTON") {
+      e.preventDefault();
+      release(false);
+    }
+  });
+
+  render();
+  setInterval(tick, TICK_MS);
+</script>
+</body>
+</html>
