@@ -87,18 +87,25 @@ canvas {
 }
 
 .tap-hint {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 10px;
   text-align: center;
   margin: 0;
-  font-size: 0.72rem;
+  padding: 4px 8px;
+  font-size: 0.82rem;
   color: var(--muted);
-  opacity: 0.5;
-  letter-spacing: 0.05em;
-  pointer-events: none;
-  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  font-variant-numeric: tabular-nums;
+  transition: color 200ms;
+}
+
+.tap-hint.ready {
+  color: var(--accent);
+  animation: ready-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes ready-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
 }
 
 .hud {
@@ -174,8 +181,8 @@ canvas {
 }
 
 .controls {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
+  justify-content: flex-end;
   gap: 10px;
 }
 
@@ -211,31 +218,9 @@ button:disabled {
   cursor: not-allowed;
 }
 
-#release-btn {
-  background: linear-gradient(180deg, #3a2418, #2a1a10);
-  border-color: #4a2e1c;
-  color: #f1d3b4;
-  min-height: 60px;
-  font-weight: 500;
-}
-
-#release-btn:hover:not(:disabled) {
-  background: linear-gradient(180deg, #4a2e1c, #331f13);
-}
-
-#release-btn .label {
-  font-size: 1.05rem;
-}
-
-#release-btn .cost {
-  color: #c4a07a;
-  font-size: 0.78rem;
-  opacity: 0.85;
-}
-
 #pause-btn {
   padding: 0 20px;
-  min-width: 92px;
+  min-width: 120px;
 }
 
 .log-details {
@@ -294,6 +279,17 @@ button:disabled {
 #log li .good { color: var(--good); }
 #log li .bad { color: var(--bad); }
 #log li .age { color: #555a69; margin-right: 8px; }
+#log li .zone {
+  display: inline-block;
+  padding: 1px 6px;
+  margin: 0 2px;
+  font-size: 0.72rem;
+  border-radius: 3px;
+  background: #1a1f2c;
+  color: #9aa3b5;
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+}
 
 footer {
   color: var(--muted);
@@ -322,9 +318,8 @@ footer li { margin: 6px 0; }
   main { padding: 24px 20px 40px; gap: 18px; }
   header h1 { font-size: 1.8rem; }
   .tagline { font-size: 0.95rem; }
-  .tap-hint { display: none; }
   .stage { padding: 12px; }
-  .controls { grid-template-columns: 1fr auto; }
+  .tap-hint { font-size: 0.9rem; }
 }
 
 @media (min-width: 860px) {

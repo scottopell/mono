@@ -2,12 +2,13 @@
 // See VISION.md for the design brief and Laws of the Game this implements.
 //
 // Law → code map:
-//   I.  Time always passes        → setInterval(tick, TICK_MS) at bottom
-//   II. All change is permanent   → state.faults is append-only; epoch advance preserves it
-//   III. Pressure always releases → tick() auto-calls performRelease({auto:true}) at cap
-//   IV. Probabilistic outcomes    → performRelease() rolls in [floor, ceiling] scaled by P
-//   V.  Complexity is generative  → (not yet wired — future: prior faults modulate roll)
-//   VI. Stability is earned       → crossing STABILITY_GOAL advances epoch, faults carry forward
+//   I.   Time always passes        → setInterval(tick, TICK_MS) at bottom
+//   II.  All change is permanent   → state.faults is append-only; epoch advance preserves it
+//   III. Pressure always releases  → tick() auto-calls performRelease({auto:true}) at cap
+//   IV.  Probabilistic outcomes    → performRelease() rolls in [floor, ceiling] scaled by P
+//   V.   Complexity is generative  → faultDensityAtAngle() modulates each release's distribution:
+//                                    virgin crust = tighter/safer, scarred = wider swing w/ neg drift
+//   VI.  Stability is earned       → crossing STABILITY_GOAL advances epoch, faults carry forward
 //
 // Tuning constants are grouped below. Tweak freely; no magic numbers hide in the body.
 (() => {
@@ -20,6 +21,11 @@
   const AUTO_RELEASE_PENALTY = 0.35; // extra downward bias on unforced discharge (Law III)
   const STABILITY_GOAL = 100;        // crossing this advances the epoch (Law VI)
 
+  // Law V tuning
+  const DENSITY_SIGMA = 0.35;        // radians (~20°) — how wide each fault's influence spreads
+  const DENSITY_SCARRING_CAP = 1.5;  // saturation point for "how scarred" this area is
+  const HEATMAP_SAMPLES = 72;        // angular resolution of the scarring ring around the planet
+
   const state = {
     ageTicks: 0,
     pressure: 0,
@@ -29,6 +35,7 @@
     epoch: 1,
     paused: false,
     log: [],
+    lastTap: null,                   // {angle, density, bornAt} — preview marker on the planet
   };
 
   const $ = (id) => document.getElementById(id);
@@ -42,12 +49,11 @@
     age: $('age'),
     epoch: $('epoch'),
     faultCount: $('fault-count'),
-    releaseBtn: $('release-btn'),
-    releaseCost: $('release-cost'),
     pauseBtn: $('pause-btn'),
     log: $('log'),
     logCount: $('log-count'),
     stage: document.querySelector('.stage'),
+    hint: $('tap-hint'),
   };
 
   const canvas = $('planet');
@@ -80,6 +86,39 @@
     return numerals[n - 1] || String(n);
   }
 
+  // Law V — how scarred is the crust at this angle?
+  // Gaussian sum over existing faults weighted by severity.
+  // 0 = virgin; saturates around DENSITY_SCARRING_CAP for very crowded zones.
+  function faultDensityAtAngle(angle) {
+    const s2 = DENSITY_SIGMA * DENSITY_SIGMA;
+    let d = 0;
+    for (const f of state.faults) {
+      let diff = f.angle - angle;
+      diff = ((diff + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+      d += f.severity * Math.exp(-(diff * diff) / s2);
+    }
+    return d;
+  }
+
+  function releaseBounds(pressure, density, auto = false) {
+    const P = pressure;
+    const scarring = clamp(density, 0, DENSITY_SCARRING_CAP) / DENSITY_SCARRING_CAP; // 0..1
+
+    // Virgin crust: narrow band, positive drift. Scarred crust: wider band, negative drift.
+    const widthMult = 0.55 + scarring * 1.15;
+    const meanShift = (1 - scarring) * (P / 40) - scarring * (P / 25);
+
+    let floor = meanShift - (P / 10) * widthMult;
+    let ceiling = meanShift + (P / 7) * widthMult;
+
+    if (auto) {
+      floor *= 1.5;
+      ceiling *= 0.55;
+      floor -= AUTO_RELEASE_PENALTY * P / 8;
+    }
+    return { floor, ceiling, scarring };
+  }
+
   function tick() {
     if (state.paused) return;
     state.ageTicks += 1;
@@ -91,32 +130,27 @@
     state.influence += INFLUENCE_BASE * dt * pressureBonus;
 
     if (state.pressure >= 99.99) {
-      performRelease({ auto: true });
+      // Unforced discharge: angle is random (you didn't choose)
+      performRelease({ auto: true, angle: Math.random() * Math.PI * 2 });
     }
   }
 
-  function performRelease({ auto = false } = {}) {
+  function performRelease({ auto = false, angle = null } = {}) {
     if (!auto && state.influence < RELEASE_COST) return;
     if (!auto) state.influence -= RELEASE_COST;
 
+    const a = angle != null ? angle : Math.random() * Math.PI * 2;
     const P = state.pressure;
-    const variance = P / 100;
-
-    let floor = -P / 10;
-    let ceiling = P / 7;
-    if (auto) {
-      floor *= 1.6;
-      ceiling *= 0.6;
-    }
+    const density = faultDensityAtAngle(a);
+    const { floor, ceiling, scarring } = releaseBounds(P, density, auto);
 
     const roll = Math.random();
-    const delta = floor + roll * (ceiling - floor) + (auto ? -AUTO_RELEASE_PENALTY * P / 10 : 0);
+    const delta = floor + roll * (ceiling - floor);
     state.stability = clamp(state.stability + delta, 0, 100);
 
-    const angle = Math.random() * Math.PI * 2;
-    const severity = clamp(variance, 0.08, 1);
+    const severity = clamp(P / 100, 0.08, 1);
     state.faults.push({
-      angle,
+      angle: a,
       lengthFrac: (20 + severity * 110) / 260,
       widthFrac: (1 + severity * 2.8) / 260,
       offsetFrac: randRange(-0.35, 0.35),
@@ -132,7 +166,10 @@
       P: Math.round(P),
       delta,
       auto,
+      scarring,
     });
+
+    state.lastTap = { angle: a, density, bornAt: state.ageTicks };
 
     if (state.stability >= STABILITY_GOAL && state.epoch < 10) {
       state.epoch += 1;
@@ -143,13 +180,13 @@
       });
     }
 
-    flashReleaseButton();
+    flashStage();
   }
 
-  function flashReleaseButton() {
+  function flashStage() {
     els.stage.animate(
-      [{ filter: 'brightness(1.4)' }, { filter: 'brightness(1)' }],
-      { duration: 240, easing: 'ease-out' }
+      [{ filter: 'brightness(1.5)' }, { filter: 'brightness(1)' }],
+      { duration: 260, easing: 'ease-out' }
     );
   }
 
@@ -167,6 +204,12 @@
     return `${m}m${s.toString().padStart(2, '0')}s`;
   }
 
+  function zoneLabel(scarring) {
+    if (scarring < 0.15) return 'virgin';
+    if (scarring < 0.5) return 'worn';
+    return 'scarred';
+  }
+
   function renderLog() {
     els.log.innerHTML = state.log.map((e) => {
       if (e.epochEnter) {
@@ -175,9 +218,51 @@
       const sign = e.delta >= 0 ? '+' : '';
       const cls = e.delta >= 0 ? 'good' : 'bad';
       const tag = e.auto ? ' <em>(unforced)</em>' : '';
-      return `<li><span class="age">${formatAge(e.ageTicks)}</span>Release at pressure ${e.P} → stability <span class="${cls}">${sign}${e.delta.toFixed(1)}</span>${tag}</li>`;
+      const zone = e.scarring != null ? ` <span class="zone">${zoneLabel(e.scarring)}</span>` : '';
+      return `<li><span class="age">${formatAge(e.ageTicks)}</span>Release at P${e.P}${zone} → stability <span class="${cls}">${sign}${e.delta.toFixed(1)}</span>${tag}</li>`;
     }).join('');
     if (els.logCount) els.logCount.textContent = state.log.length ? String(state.log.length) : '';
+  }
+
+  function drawScarringRing() {
+    const { cx, cy, r } = view;
+    const inner = r * 1.02;
+    const outer = r * 1.11;
+    const step = (Math.PI * 2) / HEATMAP_SAMPLES;
+
+    for (let i = 0; i < HEATMAP_SAMPLES; i++) {
+      const a = i * step;
+      const density = faultDensityAtAngle(a);
+      const scarring = clamp(density, 0, DENSITY_SCARRING_CAP) / DENSITY_SCARRING_CAP;
+      if (scarring < 0.02) continue;
+
+      const alpha = 0.15 + scarring * 0.55;
+      const hue = 30 - scarring * 30; // yellow → red
+      ctx.beginPath();
+      ctx.arc(cx, cy, (inner + outer) / 2, a - step * 0.55, a + step * 0.55);
+      ctx.strokeStyle = `hsla(${hue}, 70%, ${45 + scarring * 20}%, ${alpha})`;
+      ctx.lineWidth = outer - inner;
+      ctx.stroke();
+    }
+  }
+
+  function drawLastTap() {
+    if (!state.lastTap) return;
+    const { cx, cy, r } = view;
+    const age = state.ageTicks - state.lastTap.bornAt;
+    const life = Math.max(0, 1 - age / 18);
+    if (life <= 0) { state.lastTap = null; return; }
+
+    const a = state.lastTap.angle;
+    const x = cx + Math.cos(a) * r * 1.18;
+    const y = cy + Math.sin(a) * r * 1.18;
+    ctx.save();
+    ctx.strokeStyle = `rgba(240, 220, 180, ${0.8 * life})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, 6 + (1 - life) * 16, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
   }
 
   function drawPlanet() {
@@ -189,6 +274,8 @@
     bgGrad.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, w, h);
+
+    drawScarringRing();
 
     const planetGrad = ctx.createRadialGradient(
       cx - r * 0.35, cy - r * 0.35, r * 0.1,
@@ -257,6 +344,21 @@
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
+
+    drawLastTap();
+  }
+
+  function updateHint() {
+    if (!els.hint) return;
+    const ready = state.influence >= RELEASE_COST;
+    if (ready) {
+      els.hint.textContent = `tap the planet to release — aim for virgin crust`;
+      els.hint.classList.add('ready');
+    } else {
+      const pct = Math.floor((state.influence / RELEASE_COST) * 100);
+      els.hint.textContent = `accumulating influence… ${pct}%`;
+      els.hint.classList.remove('ready');
+    }
   }
 
   function renderHUD() {
@@ -273,8 +375,7 @@
     els.epoch.textContent = romanEpoch(state.epoch);
     els.faultCount.textContent = state.faults.length;
 
-    els.releaseBtn.disabled = state.influence < RELEASE_COST;
-    els.releaseCost.textContent = RELEASE_COST;
+    updateHint();
   }
 
   function frame() {
@@ -283,23 +384,26 @@
     requestAnimationFrame(frame);
   }
 
-  function handleStageTap(e) {
+  function angleFromPoint(clientX, clientY) {
     const rect = canvas.getBoundingClientRect();
-    const point = e.changedTouches ? e.changedTouches[0] : e;
-    const x = point.clientX - rect.left;
-    const y = point.clientY - rect.top;
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
     const dx = x - view.cx;
     const dy = y - view.cy;
-    if (dx * dx + dy * dy <= view.r * view.r * 1.05) {
-      performRelease({ auto: false });
-    }
+    const dist2 = dx * dx + dy * dy;
+    const maxR = view.r * 1.15;
+    if (dist2 > maxR * maxR) return null;
+    return Math.atan2(dy, dx);
+  }
+
+  function handleStageTap(e) {
+    const point = e.changedTouches ? e.changedTouches[0] : e;
+    const angle = angleFromPoint(point.clientX, point.clientY);
+    if (angle == null) return;
+    performRelease({ auto: false, angle });
   }
 
   els.stage.addEventListener('click', handleStageTap);
-  els.releaseBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    performRelease({ auto: false });
-  });
   els.pauseBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     state.paused = !state.paused;
@@ -309,7 +413,7 @@
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Space' && !e.repeat) {
       e.preventDefault();
-      performRelease({ auto: false });
+      performRelease({ auto: false, angle: Math.random() * Math.PI * 2 });
     }
     if (e.key === 'p' || e.key === 'P') {
       els.pauseBtn.click();

@@ -11,13 +11,14 @@
   <main>
     <header>
       <h1>Planet</h1>
-      <p class="tagline">Time always passes. Pressure always releases. You choose <em>when</em>, never <em>if</em>.</p>
+      <p class="tagline">Time always passes. Pressure always releases. You choose <em>when</em> and <em>where</em>, never <em>if</em>.</p>
     </header>
 
-    <section class="stage">
+    <section class="stage" role="button" aria-label="Tap the planet to release pressure">
       <canvas id="planet" aria-label="planet cross-section"></canvas>
-      <p class="tap-hint" aria-hidden="true">tap the planet to release</p>
     </section>
+
+    <p id="tap-hint" class="tap-hint" aria-live="polite">accumulating influence… 0%</p>
 
     <section class="hud">
       <div class="gauge">
@@ -40,10 +41,6 @@
     </section>
 
     <section class="controls">
-      <button id="release-btn" disabled>
-        <span class="label">Release pressure</span>
-        <span class="cost">cost: <span id="release-cost">10</span> influence</span>
-      </button>
       <button id="pause-btn" aria-label="Pause or resume time">Pause</button>
     </section>
 
@@ -57,11 +54,13 @@
         <summary>How it works</summary>
         <ul>
           <li>Time passes on its own. Pressure builds. Influence accrues.</li>
-          <li>Release early: tight outcome band, small nudge.</li>
-          <li>Release late: wider variance, higher ceiling, worse floor.</li>
-          <li>Wait too long (pressure maxes out): it releases without you, biased against you.</li>
-          <li>Every release leaves a permanent fault. Geology carries into the next epoch.</li>
-          <li>Tap the planet, tap Release, or press Space.</li>
+          <li>Tap the planet <em>where</em> you want to release. Each release costs 10 influence.</li>
+          <li>The ring around the planet shows scarring — yellow is worn, red is scarred.</li>
+          <li><strong>Virgin crust:</strong> tight outcome band, positive bias. Safe bread-and-butter.</li>
+          <li><strong>Scarred crust:</strong> wider swing, negative drift — high ceiling, worse floor. Gamble.</li>
+          <li>Low pressure = small swings regardless of where you tap.</li>
+          <li>High pressure = bigger swings. If it maxes out, it releases unforced and biased against you.</li>
+          <li>Stability ≥ 100 → next epoch begins. Geology carries forward.</li>
         </ul>
       </details>
     </footer>

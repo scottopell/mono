@@ -64,13 +64,14 @@ These silently determine what's possible in later epochs.
 |---|---|---|
 | I. Time always passes | ✅ | `setInterval(tick, TICK_MS)` in `game.js` runs regardless of focus. |
 | II. All change is permanent | 🟡 | Faults persist across epochs in memory; no save-to-disk yet, so a reload wipes history. |
-| III. Pressure always releases | ✅ | Auto-release fires at `pressure >= 99.99` with a penalty on floor/ceiling. |
-| IV. Probabilistic outcomes | ✅ | `performRelease` rolls in `[floor, ceiling]` with both bounds scaling with pressure. |
-| V. Complexity is generative | ❌ | Prior faults don't yet modulate future outcomes. Lowest-hanging next feature. |
+| III. Pressure always releases | ✅ | Auto-release fires at `pressure >= 99.99` with biased floor/ceiling. |
+| IV. Probabilistic outcomes | ✅ | `performRelease` rolls in `[floor, ceiling]` — bounds scale with pressure AND local scarring. |
+| V. Complexity is generative | ✅ | `faultDensityAtAngle()` drives width and mean of the release distribution; virgin crust = tighter/positive, scarred = wider/negative drift. Scarring visualized as a heatmap ring around the planet. |
 | VI. Stability is earned | 🟡 | Stability gate triggers epoch advance and geology carries forward, but epochs are visually indistinguishable. |
+| Spatial agency | ✅ | Player taps *where* on the planet to release. Each tap is a real decision — location, not just timing. |
 | Core loop (pressure events) | 🟡 | One pressure system (tectonic). River meander / volcanic hotspot not implemented. |
 | Visual layer choice | ❓ | Currently abstract top-down; open question still open. |
-| Player identity | ❓ | Currently implicit god-figure (buttons, no avatar). Open. |
+| Player identity | ❓ | Currently implicit god-figure (tap to intervene). Open. |
 | Law VII | ❓ | Undefined. |
 
 Legend: ✅ complete · 🟡 partial · ❌ not started · ❓ open design question
