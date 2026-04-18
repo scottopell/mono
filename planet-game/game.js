@@ -2,11 +2,13 @@
 // See VISION.md for the design brief and Laws of the Game this implements.
 //
 // Law → code map:
-//   I.   Time always passes        → setInterval(tick, TICK_MS) at bottom
+//   I.   Time always passes        → driveLoop() uses performance.now() deltas +
+//                                    visibilitychange catchup, so time advances even while
+//                                    the tab is backgrounded or the browser throttles timers.
 //   II.  All change is permanent   → state.faults is append-only; epoch advance preserves it
 //   III. Pressure always releases  → tick() auto-calls performRelease({auto:true}) at cap
 //   IV.  Probabilistic outcomes    → performRelease() rolls in [floor, ceiling] scaled by P
-//   V.   Complexity is generative  → faultDensityAtAngle() modulates each release's distribution:
+//   V.   Complexity is generative  → faultDensityAt(x,y) modulates each release's distribution:
 //                                    virgin crust = tighter/safer, scarred = wider swing w/ neg drift
 //   VI.  Stability is earned       → crossing STABILITY_GOAL advances epoch, faults carry forward
 //
@@ -21,8 +23,11 @@
   const AUTO_RELEASE_PENALTY = 0.35; // extra downward bias on unforced discharge (Law III)
   const STABILITY_GOAL = 100;        // crossing this advances the epoch (Law VI)
 
-  // Law V tuning
-  const DENSITY_SIGMA = 0.35;        // radians (~20°) — how wide each fault's influence spreads
+  // Time-flow tuning (Law I)
+  const MAX_CATCHUP_MS = 10 * 60 * 1000; // cap offline catchup at 10 minutes of sim-time
+
+  // Law V tuning — density is now 2D, measured at the actual release point
+  const DENSITY_SIGMA = 0.3;         // fraction of planet radius — how wide each fault's influence spreads
   const DENSITY_SCARRING_CAP = 1.5;  // saturation point for "how scarred" this area is
   const HEATMAP_SAMPLES = 72;        // angular resolution of the scarring ring around the planet
 
@@ -35,7 +40,7 @@
     epoch: 1,
     paused: false,
     log: [],
-    lastTap: null,                   // {angle, density, bornAt} — preview marker on the planet
+    lastTap: null,                   // {x, y, density, bornAt} — preview marker on the planet
   };
 
   const $ = (id) => document.getElementById(id);
@@ -79,25 +84,33 @@
   }
 
   const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
-  const randRange = (lo, hi) => lo + Math.random() * (hi - lo);
 
   function romanEpoch(n) {
     const numerals = ['I','II','III','IV','V','VI','VII','VIII','IX','X'];
     return numerals[n - 1] || String(n);
   }
 
-  // Law V — how scarred is the crust at this angle?
-  // Gaussian sum over existing faults weighted by severity.
+  // Law V — how scarred is the crust at this 2D point?
+  // Gaussian sum over existing faults weighted by severity and Euclidean distance
+  // in normalized planet coordinates (x,y ∈ roughly [-1, 1]).
   // 0 = virgin; saturates around DENSITY_SCARRING_CAP for very crowded zones.
-  function faultDensityAtAngle(angle) {
+  function faultDensityAt(x, y) {
     const s2 = DENSITY_SIGMA * DENSITY_SIGMA;
     let d = 0;
     for (const f of state.faults) {
-      let diff = f.angle - angle;
-      diff = ((diff + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
-      d += f.severity * Math.exp(-(diff * diff) / s2);
+      const dx = f.x - x;
+      const dy = f.y - y;
+      d += f.severity * Math.exp(-(dx * dx + dy * dy) / s2);
     }
     return d;
+  }
+
+  // Uniform random point on the planet disk (for unforced discharges
+  // and keyboard-space releases that lack a pointer location).
+  function randomDiskPoint() {
+    const a = Math.random() * Math.PI * 2;
+    const r = Math.sqrt(Math.random());
+    return { x: Math.cos(a) * r, y: Math.sin(a) * r };
   }
 
   function releaseBounds(pressure, density, auto = false) {
@@ -130,18 +143,25 @@
     state.influence += INFLUENCE_BASE * dt * pressureBonus;
 
     if (state.pressure >= 99.99) {
-      // Unforced discharge: angle is random (you didn't choose)
-      performRelease({ auto: true, angle: Math.random() * Math.PI * 2 });
+      // Unforced discharge: location is random (you didn't choose)
+      const p = randomDiskPoint();
+      performRelease({ auto: true, x: p.x, y: p.y });
     }
   }
 
-  function performRelease({ auto = false, angle = null } = {}) {
+  function performRelease({ auto = false, x = null, y = null } = {}) {
     if (!auto && state.influence < RELEASE_COST) return;
     if (!auto) state.influence -= RELEASE_COST;
 
-    const a = angle != null ? angle : Math.random() * Math.PI * 2;
+    let px = x, py = y;
+    if (px == null || py == null) {
+      const p = randomDiskPoint();
+      px = p.x;
+      py = p.y;
+    }
+
     const P = state.pressure;
-    const density = faultDensityAtAngle(a);
+    const density = faultDensityAt(px, py);
     const { floor, ceiling, scarring } = releaseBounds(P, density, auto);
 
     const roll = Math.random();
@@ -149,11 +169,17 @@
     state.stability = clamp(state.stability + delta, 0, 100);
 
     const severity = clamp(P / 100, 0.08, 1);
+    // Kept for scar rendering: radial orientation and distance-from-center
+    // are derived from the tap point rather than randomized.
+    const angle = Math.atan2(py, px);
+    const offsetFrac = Math.sqrt(px * px + py * py);
     state.faults.push({
-      angle: a,
+      x: px,
+      y: py,
+      angle,
       lengthFrac: (20 + severity * 110) / 260,
       widthFrac: (1 + severity * 2.8) / 260,
-      offsetFrac: randRange(-0.35, 0.35),
+      offsetFrac,
       severity,
       positive: delta >= 0,
       auto,
@@ -169,7 +195,7 @@
       scarring,
     });
 
-    state.lastTap = { angle: a, density, bornAt: state.ageTicks };
+    state.lastTap = { x: px, y: py, density, bornAt: state.ageTicks };
 
     if (state.stability >= STABILITY_GOAL && state.epoch < 10) {
       state.epoch += 1;
@@ -232,7 +258,8 @@
 
     for (let i = 0; i < HEATMAP_SAMPLES; i++) {
       const a = i * step;
-      const density = faultDensityAtAngle(a);
+      // Sample 2D density at the planet rim; interior-only scars fade naturally.
+      const density = faultDensityAt(Math.cos(a), Math.sin(a));
       const scarring = clamp(density, 0, DENSITY_SCARRING_CAP) / DENSITY_SCARRING_CAP;
       if (scarring < 0.02) continue;
 
@@ -253,14 +280,13 @@
     const life = Math.max(0, 1 - age / 18);
     if (life <= 0) { state.lastTap = null; return; }
 
-    const a = state.lastTap.angle;
-    const x = cx + Math.cos(a) * r * 1.18;
-    const y = cy + Math.sin(a) * r * 1.18;
+    const px = cx + state.lastTap.x * r;
+    const py = cy + state.lastTap.y * r;
     ctx.save();
     ctx.strokeStyle = `rgba(240, 220, 180, ${0.8 * life})`;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(x, y, 6 + (1 - life) * 16, 0, Math.PI * 2);
+    ctx.arc(px, py, 6 + (1 - life) * 16, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
@@ -290,6 +316,12 @@
     ctx.fill();
 
     const scale = r / 150;
+    // Scars can now sit at the rim; clip to the disc so they don't spill
+    // into empty space.
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
     for (const f of state.faults) {
       const ageTicks = state.ageTicks - f.bornAt;
       const freshness = Math.max(0, 1 - ageTicks / 600);
@@ -323,6 +355,7 @@
 
       ctx.restore();
     }
+    ctx.restore();
 
     ctx.save();
     ctx.beginPath();
@@ -384,23 +417,28 @@
     requestAnimationFrame(frame);
   }
 
-  function angleFromPoint(clientX, clientY) {
+  // Returns the tap location in normalized planet coordinates (x,y each in
+  // roughly [-1, 1]), or null if the tap missed. Taps slightly outside the
+  // disc are clamped to the rim so edge-targeting stays forgiving.
+  function pointFromClient(clientX, clientY) {
     const rect = canvas.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-    const dx = x - view.cx;
-    const dy = y - view.cy;
-    const dist2 = dx * dx + dy * dy;
+    const dx = (clientX - rect.left) - view.cx;
+    const dy = (clientY - rect.top) - view.cy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
     const maxR = view.r * 1.15;
-    if (dist2 > maxR * maxR) return null;
-    return Math.atan2(dy, dx);
+    if (dist > maxR) return null;
+    if (dist > view.r) {
+      const s = view.r / dist;
+      return { x: (dx / view.r) * s, y: (dy / view.r) * s };
+    }
+    return { x: dx / view.r, y: dy / view.r };
   }
 
   function handleStageTap(e) {
     const point = e.changedTouches ? e.changedTouches[0] : e;
-    const angle = angleFromPoint(point.clientX, point.clientY);
-    if (angle == null) return;
-    performRelease({ auto: false, angle });
+    const p = pointFromClient(point.clientX, point.clientY);
+    if (!p) return;
+    performRelease({ auto: false, x: p.x, y: p.y });
   }
 
   els.stage.addEventListener('click', handleStageTap);
@@ -413,7 +451,9 @@
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Space' && !e.repeat) {
       e.preventDefault();
-      performRelease({ auto: false, angle: Math.random() * Math.PI * 2 });
+      // No pointer info from the keyboard — pick a random disk point.
+      const p = randomDiskPoint();
+      performRelease({ auto: false, x: p.x, y: p.y });
     }
     if (e.key === 'p' || e.key === 'P') {
       els.pauseBtn.click();
@@ -424,7 +464,30 @@
   ro.observe(canvas);
   window.addEventListener('orientationchange', () => setTimeout(sizeCanvas, 100));
 
+  // Law I — time always passes. setInterval alone gets throttled (or halted)
+  // in backgrounded tabs, so we drive simulation from real wall-clock deltas
+  // and catch up missed ticks when the tab wakes up. MAX_CATCHUP_MS caps the
+  // backlog so returning after hours doesn't stall the frame.
+  let lastLoopMs = performance.now();
+  let accumulatorMs = 0;
+
+  function driveLoop() {
+    const now = performance.now();
+    const elapsed = now - lastLoopMs;
+    lastLoopMs = now;
+    if (state.paused) return;
+    accumulatorMs += Math.min(elapsed, MAX_CATCHUP_MS);
+    if (accumulatorMs > MAX_CATCHUP_MS) accumulatorMs = MAX_CATCHUP_MS;
+    while (accumulatorMs >= TICK_MS) {
+      tick();
+      accumulatorMs -= TICK_MS;
+    }
+  }
+
   sizeCanvas();
-  setInterval(tick, TICK_MS);
+  setInterval(driveLoop, TICK_MS);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) driveLoop();
+  });
   requestAnimationFrame(frame);
 })();
