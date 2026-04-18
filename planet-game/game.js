@@ -34,15 +34,31 @@
     releaseCost: $('release-cost'),
     pauseBtn: $('pause-btn'),
     log: $('log'),
+    logCount: $('log-count'),
+    stage: document.querySelector('.stage'),
   };
 
   const canvas = $('planet');
   const ctx = canvas.getContext('2d');
-  const W = canvas.width;
-  const H = canvas.height;
-  const CX = W / 2;
-  const CY = H / 2;
-  const R = 210;
+  const view = { w: 0, h: 0, cx: 0, cy: 0, r: 0, dpr: 1 };
+
+  function sizeCanvas() {
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const rect = canvas.getBoundingClientRect();
+    const cssW = Math.max(200, rect.width);
+    const cssH = Math.max(200, rect.height);
+
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    view.dpr = dpr;
+    view.w = cssW;
+    view.h = cssH;
+    view.cx = cssW / 2;
+    view.cy = cssH / 2;
+    view.r = Math.min(cssW, cssH) * 0.42;
+  }
 
   const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
   const randRange = (lo, hi) => lo + Math.random() * (hi - lo);
@@ -83,16 +99,15 @@
 
     const roll = Math.random();
     const delta = floor + roll * (ceiling - floor) + (auto ? -AUTO_RELEASE_PENALTY * P / 10 : 0);
-    const prevStability = state.stability;
     state.stability = clamp(state.stability + delta, 0, 100);
 
     const angle = Math.random() * Math.PI * 2;
     const severity = clamp(variance, 0.08, 1);
     state.faults.push({
       angle,
-      length: 20 + severity * 110,
-      width: 1 + severity * 2.8,
-      offset: randRange(-R * 0.35, R * 0.35),
+      lengthFrac: (20 + severity * 110) / 260,
+      widthFrac: (1 + severity * 2.8) / 260,
+      offsetFrac: randRange(-0.35, 0.35),
       severity,
       positive: delta >= 0,
       auto,
@@ -115,6 +130,15 @@
         epochEnter: state.epoch,
       });
     }
+
+    flashReleaseButton();
+  }
+
+  function flashReleaseButton() {
+    els.stage.animate(
+      [{ filter: 'brightness(1.4)' }, { filter: 'brightness(1)' }],
+      { duration: 240, easing: 'ease-out' }
+    );
   }
 
   function pushLog(entry) {
@@ -141,45 +165,51 @@
       const tag = e.auto ? ' <em>(unforced)</em>' : '';
       return `<li><span class="age">${formatAge(e.ageTicks)}</span>Release at pressure ${e.P} → stability <span class="${cls}">${sign}${e.delta.toFixed(1)}</span>${tag}</li>`;
     }).join('');
+    if (els.logCount) els.logCount.textContent = state.log.length ? String(state.log.length) : '';
   }
 
   function drawPlanet() {
-    ctx.clearRect(0, 0, W, H);
+    const { w, h, cx, cy, r } = view;
+    ctx.clearRect(0, 0, w, h);
 
-    const bgGrad = ctx.createRadialGradient(CX, CY, R * 0.2, CX, CY, R * 2.2);
+    const bgGrad = ctx.createRadialGradient(cx, cy, r * 0.2, cx, cy, r * 2.2);
     bgGrad.addColorStop(0, 'rgba(40,50,70,0.15)');
     bgGrad.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(0, 0, w, h);
 
     const planetGrad = ctx.createRadialGradient(
-      CX - R * 0.35, CY - R * 0.35, R * 0.1,
-      CX, CY, R
+      cx - r * 0.35, cy - r * 0.35, r * 0.1,
+      cx, cy, r
     );
     planetGrad.addColorStop(0, '#3a4052');
     planetGrad.addColorStop(0.55, '#262b38');
     planetGrad.addColorStop(1, '#121520');
     ctx.fillStyle = planetGrad;
     ctx.beginPath();
-    ctx.arc(CX, CY, R, 0, Math.PI * 2);
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.fill();
 
+    const scale = r / 150;
     for (const f of state.faults) {
       const ageTicks = state.ageTicks - f.bornAt;
       const freshness = Math.max(0, 1 - ageTicks / 600);
       ctx.save();
-      ctx.translate(CX, CY);
+      ctx.translate(cx, cy);
       ctx.rotate(f.angle);
 
-      const halfLen = f.length / 2;
-      const x0 = f.offset - halfLen;
-      const x1 = f.offset + halfLen;
+      const length = f.lengthFrac * 260 * scale;
+      const width = Math.max(1, f.widthFrac * 260 * scale);
+      const offset = f.offsetFrac * r;
+      const halfLen = length / 2;
+      const x0 = offset - halfLen;
+      const x1 = offset + halfLen;
       const baseHue = f.positive ? 140 : 10;
       const sat = 30 + f.severity * 40;
       const light = 35 + freshness * 25;
 
       ctx.strokeStyle = `hsla(${baseHue}, ${sat}%, ${light}%, ${0.5 + 0.4 * freshness})`;
-      ctx.lineWidth = f.width;
+      ctx.lineWidth = width;
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(x0, 0);
@@ -188,7 +218,7 @@
 
       if (f.auto) {
         ctx.strokeStyle = `hsla(10, 70%, 50%, ${0.3 * freshness})`;
-        ctx.lineWidth = f.width + 2;
+        ctx.lineWidth = width + 2;
         ctx.stroke();
       }
 
@@ -197,22 +227,22 @@
 
     ctx.save();
     ctx.beginPath();
-    ctx.arc(CX, CY, R, 0, Math.PI * 2);
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.clip();
     const pressureAlpha = state.pressure / 100;
     const pulse = 0.85 + 0.15 * Math.sin(state.ageTicks * 0.08);
-    const glow = ctx.createRadialGradient(CX, CY, R * 0.6, CX, CY, R);
+    const glow = ctx.createRadialGradient(cx, cy, r * 0.6, cx, cy, r);
     glow.addColorStop(0, 'rgba(200,90,62,0)');
     glow.addColorStop(1, `rgba(230,90,62,${0.55 * pressureAlpha * pulse})`);
     ctx.fillStyle = glow;
-    ctx.fillRect(CX - R, CY - R, R * 2, R * 2);
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
     ctx.restore();
 
     ctx.save();
     ctx.strokeStyle = `rgba(255,255,255,${0.06 + 0.08 * pressureAlpha})`;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.arc(CX, CY, R, 0, Math.PI * 2);
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
@@ -241,8 +271,25 @@
     requestAnimationFrame(frame);
   }
 
-  els.releaseBtn.addEventListener('click', () => performRelease({ auto: false }));
-  els.pauseBtn.addEventListener('click', () => {
+  function handleStageTap(e) {
+    const rect = canvas.getBoundingClientRect();
+    const point = e.changedTouches ? e.changedTouches[0] : e;
+    const x = point.clientX - rect.left;
+    const y = point.clientY - rect.top;
+    const dx = x - view.cx;
+    const dy = y - view.cy;
+    if (dx * dx + dy * dy <= view.r * view.r * 1.05) {
+      performRelease({ auto: false });
+    }
+  }
+
+  els.stage.addEventListener('click', handleStageTap);
+  els.releaseBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    performRelease({ auto: false });
+  });
+  els.pauseBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
     state.paused = !state.paused;
     els.pauseBtn.textContent = state.paused ? 'Resume' : 'Pause';
   });
@@ -257,6 +304,11 @@
     }
   });
 
+  const ro = new ResizeObserver(sizeCanvas);
+  ro.observe(canvas);
+  window.addEventListener('orientationchange', () => setTimeout(sizeCanvas, 100));
+
+  sizeCanvas();
   setInterval(tick, TICK_MS);
   requestAnimationFrame(frame);
 })();
