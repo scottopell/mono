@@ -1,12 +1,24 @@
+// Planet Game — MVP simulation
+// See VISION.md for the design brief and Laws of the Game this implements.
+//
+// Law → code map:
+//   I.  Time always passes        → setInterval(tick, TICK_MS) at bottom
+//   II. All change is permanent   → state.faults is append-only; epoch advance preserves it
+//   III. Pressure always releases → tick() auto-calls performRelease({auto:true}) at cap
+//   IV. Probabilistic outcomes    → performRelease() rolls in [floor, ceiling] scaled by P
+//   V.  Complexity is generative  → (not yet wired — future: prior faults modulate roll)
+//   VI. Stability is earned       → crossing STABILITY_GOAL advances epoch, faults carry forward
+//
+// Tuning constants are grouped below. Tweak freely; no magic numbers hide in the body.
 (() => {
   'use strict';
 
   const TICK_MS = 100;
-  const PRESSURE_RATE = 0.45;
-  const INFLUENCE_BASE = 0.9;
-  const RELEASE_COST = 10;
-  const AUTO_RELEASE_PENALTY = 0.35;
-  const STABILITY_GOAL = 100;
+  const PRESSURE_RATE = 0.45;        // pressure units per second
+  const INFLUENCE_BASE = 0.9;        // influence per second, scales w/ pressure
+  const RELEASE_COST = 10;           // influence spent per voluntary release
+  const AUTO_RELEASE_PENALTY = 0.35; // extra downward bias on unforced discharge (Law III)
+  const STABILITY_GOAL = 100;        // crossing this advances the epoch (Law VI)
 
   const state = {
     ageTicks: 0,
