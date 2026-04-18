@@ -63,14 +63,14 @@ These silently determine what's possible in later epochs.
 | Law / System | Status | Notes |
 |---|---|---|
 | I. Time always passes | ✅ | `driveLoop()` in `game.js` uses `performance.now()` deltas plus a `visibilitychange` catchup, so sim-time advances even when the tab is backgrounded and browsers throttle `setInterval`. Offline catchup is capped at 10 minutes. |
-| II. All change is permanent | 🟡 | Faults persist across epochs in memory; no save-to-disk yet, so a reload wipes history. |
+| II. All change is permanent | 🟡 | Faults persist across epochs in memory, and a fixed `state.planetSeed` keeps the same world across epochs. No save-to-disk yet, so a reload still wipes history. |
 | III. Pressure always releases | ✅ | Auto-release fires at `pressure >= 99.99` with biased floor/ceiling. |
 | IV. Probabilistic outcomes | ✅ | `performRelease` rolls in `[floor, ceiling]` — bounds scale with pressure AND local scarring. |
-| V. Complexity is generative | ✅ | `faultDensityAt(x,y)` drives width and mean of the release distribution; virgin crust = tighter/positive, scarred = wider/negative drift. Density is measured at the 2D tap point (not along the angular ring). Scarring still visualized as a heatmap ring around the planet. |
+| V. Complexity is generative | ✅ | `faultDensityAt(x,y)` drives width and mean of the release distribution; virgin crust = tighter/positive, scarred = wider/negative drift. Density is measured at the 2D tap point. Positive releases render as bright ridges, negative as shadowed canyons, so history is legible as geology. Scarring heatmap ring remains for rim-visible activity. |
 | VI. Stability is earned | 🟡 | Stability gate triggers epoch advance and geology carries forward, but epochs are visually indistinguishable. |
 | Spatial agency | ✅ | Player taps *where* on the planet to release. Each tap is a real decision — location, not just timing. |
 | Core loop (pressure events) | 🟡 | One pressure system (tectonic). River meander / volcanic hotspot not implemented. |
-| Visual layer choice | ❓ | Currently abstract top-down; open question still open. |
+| Visual layer choice | ✅ | Top-down procedural terrain: seeded fractal-noise continents/oceans on an offscreen canvas, baked once and blitted per frame, with directional shading + limb darkening. Cross-section / orbital views remain possible future modes but are no longer blocking. |
 | Player identity | ❓ | Currently implicit god-figure (tap to intervene). Open. |
 | Law VII | ❓ | Undefined. |
 

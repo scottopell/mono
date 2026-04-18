@@ -5,11 +5,15 @@
 //   I.   Time always passes        → driveLoop() uses performance.now() deltas +
 //                                    visibilitychange catchup, so time advances even while
 //                                    the tab is backgrounded or the browser throttles timers.
-//   II.  All change is permanent   → state.faults is append-only; epoch advance preserves it
+//   II.  All change is permanent   → state.faults is append-only; epoch advance preserves it.
+//                                    state.planetSeed fixes the terrain so the same world
+//                                    carries forward across epochs.
 //   III. Pressure always releases  → tick() auto-calls performRelease({auto:true}) at cap
 //   IV.  Probabilistic outcomes    → performRelease() rolls in [floor, ceiling] scaled by P
 //   V.   Complexity is generative  → faultDensityAt(x,y) modulates each release's distribution:
-//                                    virgin crust = tighter/safer, scarred = wider swing w/ neg drift
+//                                    virgin crust = tighter/safer, scarred = wider swing w/ neg drift.
+//                                    Positive deltas render as ridges, negative as canyons, so the
+//                                    map encodes the release history geologically.
 //   VI.  Stability is earned       → crossing STABILITY_GOAL advances epoch, faults carry forward
 //
 // Tuning constants are grouped below. Tweak freely; no magic numbers hide in the body.
@@ -31,6 +35,11 @@
   const DENSITY_SCARRING_CAP = 1.5;  // saturation point for "how scarred" this area is
   const HEATMAP_SAMPLES = 72;        // angular resolution of the scarring ring around the planet
 
+  // Terrain tuning — same seed across epochs (Law II: persistent world)
+  const TERRAIN_RES = 512;           // offscreen noise buffer resolution (square)
+  const NOISE_SCALE = 3.2;           // continents per planet width
+  const NOISE_OCTAVES = 4;
+
   const state = {
     ageTicks: 0,
     pressure: 0,
@@ -41,6 +50,7 @@
     paused: false,
     log: [],
     lastTap: null,                   // {x, y, density, bornAt} — preview marker on the planet
+    planetSeed: (Math.random() * 0xffffffff) >>> 0,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -111,6 +121,105 @@
     const a = Math.random() * Math.PI * 2;
     const r = Math.sqrt(Math.random());
     return { x: Math.cos(a) * r, y: Math.sin(a) * r };
+  }
+
+  // Deterministic integer-lattice hash → [0, 1). Seeded so the same planet
+  // recurs across epochs / reloads-within-a-session, honoring Law II.
+  // Math.imul keeps every step in signed-32-bit space — plain `*` would
+  // overflow Number.MAX_SAFE_INTEGER for larger seeds and desync the noise.
+  function hash2(ix, iy, seed) {
+    let h = Math.imul(ix | 0, 374761393);
+    h = (h + Math.imul(iy | 0, 668265263)) | 0;
+    h = (h + Math.imul(seed | 0, 1274126177)) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    h = h ^ (h >>> 16);
+    return (h >>> 0) / 4294967296;
+  }
+
+  function smoothstep(t) { return t * t * (3 - 2 * t); }
+
+  function valueNoise(x, y, seed) {
+    const xi = Math.floor(x);
+    const yi = Math.floor(y);
+    const xf = x - xi;
+    const yf = y - yi;
+    const a = hash2(xi,     yi,     seed);
+    const b = hash2(xi + 1, yi,     seed);
+    const c = hash2(xi,     yi + 1, seed);
+    const d = hash2(xi + 1, yi + 1, seed);
+    const u = smoothstep(xf);
+    const v = smoothstep(yf);
+    return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+  }
+
+  function fbm(x, y, seed) {
+    let amp = 1, freq = 1, sum = 0, norm = 0;
+    for (let i = 0; i < NOISE_OCTAVES; i++) {
+      sum += amp * valueNoise(x * freq, y * freq, seed + i * 131);
+      norm += amp;
+      amp *= 0.5;
+      freq *= 2;
+    }
+    return sum / norm;
+  }
+
+  // Elevation → RGB palette. Biomes are ordered so continents sit above
+  // sea level and peaks cap out in pale rock.
+  function heightToColor(h) {
+    if (h < 0.40) return [22, 42, 78];     // deep ocean
+    if (h < 0.47) return [38, 72, 112];    // shelf
+    if (h < 0.50) return [72, 110, 138];   // shallows
+    if (h < 0.53) return [148, 134, 94];   // beach
+    if (h < 0.62) return [82, 112, 70];    // plains
+    if (h < 0.72) return [100, 110, 60];   // hills
+    if (h < 0.82) return [126, 100, 76];   // mountain flank
+    return [205, 196, 178];                // peaks
+  }
+
+  // Offscreen canvas holding the planet's surface. Baked once (per seed),
+  // blitted per-frame — no per-frame noise sampling.
+  let terrainCanvas = null;
+
+  function bakeTerrain() {
+    const c = document.createElement('canvas');
+    c.width = TERRAIN_RES;
+    c.height = TERRAIN_RES;
+    const tctx = c.getContext('2d');
+    const img = tctx.createImageData(TERRAIN_RES, TERRAIN_RES);
+    const data = img.data;
+    const seed = state.planetSeed;
+    const half = TERRAIN_RES / 2;
+
+    for (let py = 0; py < TERRAIN_RES; py++) {
+      for (let px = 0; px < TERRAIN_RES; px++) {
+        const nx = (px - half) / half; // [-1, 1]
+        const ny = (py - half) / half;
+        const idx = (py * TERRAIN_RES + px) * 4;
+        const d2 = nx * nx + ny * ny;
+        if (d2 > 1) { data[idx + 3] = 0; continue; }
+
+        // Pull elevation down near the rim so oceans fringe the disc —
+        // continents read as a planet, not a square noise patch.
+        const rimPull = 0.28 * d2 * d2;
+        const h = fbm(nx * NOISE_SCALE, ny * NOISE_SCALE, seed) - rimPull;
+
+        // Directional lighting: top-left lit, bottom-right shaded.
+        const light = 0.55 - nx * 0.32 - ny * 0.42;
+        const shade = Math.max(0.42, Math.min(1.08, 0.78 + light * 0.55));
+
+        // Limb darkening: subtle falloff near the circumference adds sphericality.
+        const limb = 1 - 0.28 * d2;
+
+        const [r, g, b] = heightToColor(h);
+        const k = shade * limb;
+        data[idx]     = Math.min(255, r * k);
+        data[idx + 1] = Math.min(255, g * k);
+        data[idx + 2] = Math.min(255, b * k);
+        data[idx + 3] = 255;
+      }
+    }
+    tctx.putImageData(img, 0, 0);
+    terrainCanvas = c;
   }
 
   function releaseBounds(pressure, density, auto = false) {
@@ -303,25 +412,23 @@
 
     drawScarringRing();
 
-    const planetGrad = ctx.createRadialGradient(
-      cx - r * 0.35, cy - r * 0.35, r * 0.1,
-      cx, cy, r
-    );
-    planetGrad.addColorStop(0, '#3a4052');
-    planetGrad.addColorStop(0.55, '#262b38');
-    planetGrad.addColorStop(1, '#121520');
-    ctx.fillStyle = planetGrad;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fill();
-
-    const scale = r / 150;
-    // Scars can now sit at the rim; clip to the disc so they don't spill
-    // into empty space.
+    // Terrain: baked offscreen noise blitted into the disc. Clipping keeps
+    // the square source image from bleeding outside the sphere silhouette.
     ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.clip();
+    if (terrainCanvas) {
+      ctx.drawImage(terrainCanvas, cx - r, cy - r, r * 2, r * 2);
+    } else {
+      ctx.fillStyle = '#1a1f2c';
+      ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    }
+
+    // Faults — positive releases render as bright ridges (mountains),
+    // negative as shadowed trenches (canyons). Two strokes per fault fake
+    // a shaded profile on flat 2D canvas.
+    const scale = r / 150;
     for (const f of state.faults) {
       const ageTicks = state.ageTicks - f.bornAt;
       const freshness = Math.max(0, 1 - ageTicks / 600);
@@ -330,26 +437,52 @@
       ctx.rotate(f.angle);
 
       const length = f.lengthFrac * 260 * scale;
-      const width = Math.max(1, f.widthFrac * 260 * scale);
+      const baseWidth = Math.max(1.5, f.widthFrac * 260 * scale);
       const offset = f.offsetFrac * r;
       const halfLen = length / 2;
       const x0 = offset - halfLen;
       const x1 = offset + halfLen;
-      const baseHue = f.positive ? 140 : 10;
-      const sat = 30 + f.severity * 40;
-      const light = 35 + freshness * 25;
 
-      ctx.strokeStyle = `hsla(${baseHue}, ${sat}%, ${light}%, ${0.5 + 0.4 * freshness})`;
-      ctx.lineWidth = width;
       ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(x0, 0);
-      ctx.lineTo(x1, 0);
-      ctx.stroke();
+
+      if (f.positive) {
+        // Shadow slab (casts toward the unlit side of the feature).
+        ctx.strokeStyle = `hsla(25, 30%, 12%, ${0.55 * (0.55 + 0.45 * freshness)})`;
+        ctx.lineWidth = baseWidth * 1.9;
+        ctx.beginPath();
+        ctx.moveTo(x0, baseWidth * 0.45);
+        ctx.lineTo(x1, baseWidth * 0.45);
+        ctx.stroke();
+        // Bright ridge crest.
+        ctx.strokeStyle = `hsla(40, 22%, ${72 - 8 * (1 - freshness)}%, ${0.75 + 0.2 * freshness})`;
+        ctx.lineWidth = baseWidth * 0.75;
+        ctx.beginPath();
+        ctx.moveTo(x0, -baseWidth * 0.25);
+        ctx.lineTo(x1, -baseWidth * 0.25);
+        ctx.stroke();
+      } else {
+        // Canyon depth (dark floor).
+        ctx.strokeStyle = `hsla(18, 55%, 10%, ${0.65 + 0.25 * freshness})`;
+        ctx.lineWidth = baseWidth * 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x0, 0);
+        ctx.lineTo(x1, 0);
+        ctx.stroke();
+        // Lit upper rim.
+        ctx.strokeStyle = `hsla(35, 22%, 62%, ${0.45 * freshness + 0.2})`;
+        ctx.lineWidth = baseWidth * 0.45;
+        ctx.beginPath();
+        ctx.moveTo(x0, -baseWidth * 0.8);
+        ctx.lineTo(x1, -baseWidth * 0.8);
+        ctx.stroke();
+      }
 
       if (f.auto) {
-        ctx.strokeStyle = `hsla(10, 70%, 50%, ${0.3 * freshness})`;
-        ctx.lineWidth = width + 2;
+        ctx.strokeStyle = `hsla(10, 70%, 45%, ${0.28 * freshness})`;
+        ctx.lineWidth = baseWidth * 2.4;
+        ctx.beginPath();
+        ctx.moveTo(x0, 0);
+        ctx.lineTo(x1, 0);
         ctx.stroke();
       }
 
@@ -485,6 +618,7 @@
   }
 
   sizeCanvas();
+  bakeTerrain();
   setInterval(driveLoop, TICK_MS);
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) driveLoop();
