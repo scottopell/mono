@@ -1,0 +1,337 @@
+:root {
+  --bg: #0b0d12;
+  --panel: #141822;
+  --panel-edge: #1f2432;
+  --text: #d8dce3;
+  --muted: #7a8296;
+  --accent: #d4b37a;
+  --good: #5fae7f;
+  --bad: #d9604d;
+  --pressure: #c85a3e;
+  --stability: #5b94d4;
+  --influence: #c9a85b;
+
+  --pad: 14px;
+  --radius: 10px;
+  --tap: 48px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: contain;
+}
+
+button, a, [role="button"] {
+  touch-action: manipulation;
+}
+
+main {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: env(safe-area-inset-top, 0) 14px calc(20px + env(safe-area-inset-bottom, 0));
+  display: grid;
+  gap: 14px;
+}
+
+header {
+  padding-top: 16px;
+}
+
+header h1 {
+  margin: 0;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  font-size: 1.4rem;
+}
+
+.tagline {
+  color: var(--muted);
+  margin: 4px 0 0;
+  font-style: italic;
+  font-size: 0.88rem;
+}
+
+.stage {
+  position: relative;
+  background: radial-gradient(ellipse at center, #151923 0%, #08090d 100%);
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius);
+  padding: 8px;
+  aspect-ratio: 1 / 1;
+  max-width: 560px;
+  width: 100%;
+  margin: 0 auto;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: pointer;
+}
+
+.stage:active { transform: scale(0.997); }
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: calc(var(--radius) - 3px);
+}
+
+.tap-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 10px;
+  text-align: center;
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+  opacity: 0.5;
+  letter-spacing: 0.05em;
+  pointer-events: none;
+  text-transform: uppercase;
+}
+
+.hud {
+  display: grid;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius);
+  padding: var(--pad);
+}
+
+.gauge label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-bottom: 4px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.gauge label span {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.bar {
+  position: relative;
+  height: 12px;
+  background: #0c0f15;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.bar > div:first-child {
+  height: 100%;
+  width: 0%;
+  transition: width 120ms linear;
+  border-radius: 6px;
+}
+
+.bar-stability > div { background: var(--stability); }
+.bar-pressure > div { background: var(--pressure); }
+.bar-influence > div { background: var(--influence); }
+
+.goal-mark {
+  position: absolute;
+  top: -2px;
+  left: 100%;
+  width: 2px;
+  height: 16px;
+  background: var(--accent);
+  transform: translateX(-1px);
+  opacity: 0.7;
+}
+
+.meta {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  color: var(--muted);
+  padding-top: 6px;
+  border-top: 1px solid var(--panel-edge);
+  margin-top: 2px;
+}
+
+.meta strong {
+  color: var(--text);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  margin-left: 4px;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+button {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius);
+  padding: 0 18px;
+  min-height: var(--tap);
+  font-size: 1rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms, transform 80ms;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+button:hover:not(:disabled) {
+  background: #1a1f2c;
+  border-color: #2c3347;
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+#release-btn {
+  background: linear-gradient(180deg, #3a2418, #2a1a10);
+  border-color: #4a2e1c;
+  color: #f1d3b4;
+  min-height: 60px;
+  font-weight: 500;
+}
+
+#release-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, #4a2e1c, #331f13);
+}
+
+#release-btn .label {
+  font-size: 1.05rem;
+}
+
+#release-btn .cost {
+  color: #c4a07a;
+  font-size: 0.78rem;
+  opacity: 0.85;
+}
+
+#pause-btn {
+  padding: 0 20px;
+  min-width: 92px;
+}
+
+.log-details {
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius);
+  padding: 4px 14px;
+}
+
+.log-details summary {
+  cursor: pointer;
+  padding: 10px 0;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.log-details summary::-webkit-details-marker { display: none; }
+
+.log-details summary::after {
+  content: "▸";
+  color: var(--muted);
+  transition: transform 150ms;
+}
+
+.log-details[open] summary::after { transform: rotate(90deg); }
+
+.log-count {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+#log {
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+  max-height: 200px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+}
+
+#log li {
+  padding: 6px 0;
+  border-bottom: 1px solid #1a1f2c;
+  color: var(--muted);
+}
+#log li:last-child { border-bottom: none; }
+#log li .good { color: var(--good); }
+#log li .bad { color: var(--bad); }
+#log li .age { color: #555a69; margin-right: 8px; }
+
+footer {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+footer summary {
+  cursor: pointer;
+  color: var(--accent);
+  padding: 10px 0;
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+}
+
+footer ul {
+  margin: 4px 0 12px;
+  padding-left: 20px;
+}
+
+footer li { margin: 6px 0; }
+
+/* Larger screens: tighten layout, slightly bigger type */
+@media (min-width: 640px) {
+  html, body { font-size: 16px; }
+  main { padding: 24px 20px 40px; gap: 18px; }
+  header h1 { font-size: 1.8rem; }
+  .tagline { font-size: 0.95rem; }
+  .tap-hint { display: none; }
+  .stage { padding: 12px; }
+  .controls { grid-template-columns: 1fr auto; }
+}
+
+@media (min-width: 860px) {
+  main { gap: 20px; }
+  .hud { padding: 16px 18px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

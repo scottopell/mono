@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d12">
+  <title>Planet Game — MVP</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Planet</h1>
+      <p class="tagline">Time always passes. Pressure always releases. You choose <em>when</em>, never <em>if</em>.</p>
+    </header>
+
+    <section class="stage">
+      <canvas id="planet" aria-label="planet cross-section"></canvas>
+      <p class="tap-hint" aria-hidden="true">tap the planet to release</p>
+    </section>
+
+    <section class="hud">
+      <div class="gauge">
+        <label>Stability <span id="stability-val">50</span></label>
+        <div class="bar bar-stability"><div id="stability-fill"></div><div class="goal-mark" title="era threshold"></div></div>
+      </div>
+      <div class="gauge">
+        <label>Pressure <span id="pressure-val">0</span></label>
+        <div class="bar bar-pressure"><div id="pressure-fill"></div></div>
+      </div>
+      <div class="gauge">
+        <label>Influence <span id="influence-val">0</span></label>
+        <div class="bar bar-influence"><div id="influence-fill"></div></div>
+      </div>
+      <div class="meta">
+        <span>Epoch <strong id="epoch">I</strong></span>
+        <span>Age <strong id="age">0</strong></span>
+        <span>Faults <strong id="fault-count">0</strong></span>
+      </div>
+    </section>
+
+    <section class="controls">
+      <button id="release-btn" disabled>
+        <span class="label">Release pressure</span>
+        <span class="cost">cost: <span id="release-cost">10</span> influence</span>
+      </button>
+      <button id="pause-btn" aria-label="Pause or resume time">Pause</button>
+    </section>
+
+    <details class="log-details">
+      <summary>Geological record <span class="log-count" id="log-count"></span></summary>
+      <ol id="log" aria-live="polite"></ol>
+    </details>
+
+    <footer>
+      <details>
+        <summary>How it works</summary>
+        <ul>
+          <li>Time passes on its own. Pressure builds. Influence accrues.</li>
+          <li>Release early: tight outcome band, small nudge.</li>
+          <li>Release late: wider variance, higher ceiling, worse floor.</li>
+          <li>Wait too long (pressure maxes out): it releases without you, biased against you.</li>
+          <li>Every release leaves a permanent fault. Geology carries into the next epoch.</li>
+          <li>Tap the planet, tap Release, or press Space.</li>
+        </ul>
+      </details>
+    </footer>
+  </main>
+
+  <script src="game.js"></script>
+</body>
+</html>
