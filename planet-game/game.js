@@ -1,0 +1,262 @@
+(() => {
+  'use strict';
+
+  const TICK_MS = 100;
+  const PRESSURE_RATE = 0.45;
+  const INFLUENCE_BASE = 0.9;
+  const RELEASE_COST = 10;
+  const AUTO_RELEASE_PENALTY = 0.35;
+  const STABILITY_GOAL = 100;
+
+  const state = {
+    ageTicks: 0,
+    pressure: 0,
+    influence: 0,
+    stability: 50,
+    faults: [],
+    epoch: 1,
+    paused: false,
+    log: [],
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    stabilityVal: $('stability-val'),
+    stabilityFill: $('stability-fill'),
+    pressureVal: $('pressure-val'),
+    pressureFill: $('pressure-fill'),
+    influenceVal: $('influence-val'),
+    influenceFill: $('influence-fill'),
+    age: $('age'),
+    epoch: $('epoch'),
+    faultCount: $('fault-count'),
+    releaseBtn: $('release-btn'),
+    releaseCost: $('release-cost'),
+    pauseBtn: $('pause-btn'),
+    log: $('log'),
+  };
+
+  const canvas = $('planet');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+  const CX = W / 2;
+  const CY = H / 2;
+  const R = 210;
+
+  const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+  const randRange = (lo, hi) => lo + Math.random() * (hi - lo);
+
+  function romanEpoch(n) {
+    const numerals = ['I','II','III','IV','V','VI','VII','VIII','IX','X'];
+    return numerals[n - 1] || String(n);
+  }
+
+  function tick() {
+    if (state.paused) return;
+    state.ageTicks += 1;
+
+    const dt = TICK_MS / 1000;
+    state.pressure = clamp(state.pressure + PRESSURE_RATE * dt, 0, 100);
+
+    const pressureBonus = 1 + state.pressure / 200;
+    state.influence += INFLUENCE_BASE * dt * pressureBonus;
+
+    if (state.pressure >= 99.99) {
+      performRelease({ auto: true });
+    }
+  }
+
+  function performRelease({ auto = false } = {}) {
+    if (!auto && state.influence < RELEASE_COST) return;
+    if (!auto) state.influence -= RELEASE_COST;
+
+    const P = state.pressure;
+    const variance = P / 100;
+
+    let floor = -P / 10;
+    let ceiling = P / 7;
+    if (auto) {
+      floor *= 1.6;
+      ceiling *= 0.6;
+    }
+
+    const roll = Math.random();
+    const delta = floor + roll * (ceiling - floor) + (auto ? -AUTO_RELEASE_PENALTY * P / 10 : 0);
+    const prevStability = state.stability;
+    state.stability = clamp(state.stability + delta, 0, 100);
+
+    const angle = Math.random() * Math.PI * 2;
+    const severity = clamp(variance, 0.08, 1);
+    state.faults.push({
+      angle,
+      length: 20 + severity * 110,
+      width: 1 + severity * 2.8,
+      offset: randRange(-R * 0.35, R * 0.35),
+      severity,
+      positive: delta >= 0,
+      auto,
+      bornAt: state.ageTicks,
+    });
+
+    state.pressure = 0;
+    pushLog({
+      ageTicks: state.ageTicks,
+      P: Math.round(P),
+      delta,
+      auto,
+    });
+
+    if (state.stability >= STABILITY_GOAL && state.epoch < 10) {
+      state.epoch += 1;
+      state.stability = 55;
+      pushLog({
+        ageTicks: state.ageTicks,
+        epochEnter: state.epoch,
+      });
+    }
+  }
+
+  function pushLog(entry) {
+    state.log.unshift(entry);
+    if (state.log.length > 40) state.log.pop();
+    renderLog();
+  }
+
+  function formatAge(t) {
+    const seconds = Math.floor(t * TICK_MS / 1000);
+    if (seconds < 60) return `${seconds}s`;
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}m${s.toString().padStart(2, '0')}s`;
+  }
+
+  function renderLog() {
+    els.log.innerHTML = state.log.map((e) => {
+      if (e.epochEnter) {
+        return `<li><span class="age">${formatAge(e.ageTicks)}</span>— Epoch <strong>${romanEpoch(e.epochEnter)}</strong> begins. Geology carries forward.</li>`;
+      }
+      const sign = e.delta >= 0 ? '+' : '';
+      const cls = e.delta >= 0 ? 'good' : 'bad';
+      const tag = e.auto ? ' <em>(unforced)</em>' : '';
+      return `<li><span class="age">${formatAge(e.ageTicks)}</span>Release at pressure ${e.P} → stability <span class="${cls}">${sign}${e.delta.toFixed(1)}</span>${tag}</li>`;
+    }).join('');
+  }
+
+  function drawPlanet() {
+    ctx.clearRect(0, 0, W, H);
+
+    const bgGrad = ctx.createRadialGradient(CX, CY, R * 0.2, CX, CY, R * 2.2);
+    bgGrad.addColorStop(0, 'rgba(40,50,70,0.15)');
+    bgGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    const planetGrad = ctx.createRadialGradient(
+      CX - R * 0.35, CY - R * 0.35, R * 0.1,
+      CX, CY, R
+    );
+    planetGrad.addColorStop(0, '#3a4052');
+    planetGrad.addColorStop(0.55, '#262b38');
+    planetGrad.addColorStop(1, '#121520');
+    ctx.fillStyle = planetGrad;
+    ctx.beginPath();
+    ctx.arc(CX, CY, R, 0, Math.PI * 2);
+    ctx.fill();
+
+    for (const f of state.faults) {
+      const ageTicks = state.ageTicks - f.bornAt;
+      const freshness = Math.max(0, 1 - ageTicks / 600);
+      ctx.save();
+      ctx.translate(CX, CY);
+      ctx.rotate(f.angle);
+
+      const halfLen = f.length / 2;
+      const x0 = f.offset - halfLen;
+      const x1 = f.offset + halfLen;
+      const baseHue = f.positive ? 140 : 10;
+      const sat = 30 + f.severity * 40;
+      const light = 35 + freshness * 25;
+
+      ctx.strokeStyle = `hsla(${baseHue}, ${sat}%, ${light}%, ${0.5 + 0.4 * freshness})`;
+      ctx.lineWidth = f.width;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x0, 0);
+      ctx.lineTo(x1, 0);
+      ctx.stroke();
+
+      if (f.auto) {
+        ctx.strokeStyle = `hsla(10, 70%, 50%, ${0.3 * freshness})`;
+        ctx.lineWidth = f.width + 2;
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(CX, CY, R, 0, Math.PI * 2);
+    ctx.clip();
+    const pressureAlpha = state.pressure / 100;
+    const pulse = 0.85 + 0.15 * Math.sin(state.ageTicks * 0.08);
+    const glow = ctx.createRadialGradient(CX, CY, R * 0.6, CX, CY, R);
+    glow.addColorStop(0, 'rgba(200,90,62,0)');
+    glow.addColorStop(1, `rgba(230,90,62,${0.55 * pressureAlpha * pulse})`);
+    ctx.fillStyle = glow;
+    ctx.fillRect(CX - R, CY - R, R * 2, R * 2);
+    ctx.restore();
+
+    ctx.save();
+    ctx.strokeStyle = `rgba(255,255,255,${0.06 + 0.08 * pressureAlpha})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(CX, CY, R, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function renderHUD() {
+    els.stabilityVal.textContent = Math.round(state.stability);
+    els.stabilityFill.style.width = `${state.stability}%`;
+
+    els.pressureVal.textContent = Math.round(state.pressure);
+    els.pressureFill.style.width = `${state.pressure}%`;
+
+    els.influenceVal.textContent = Math.floor(state.influence);
+    els.influenceFill.style.width = `${clamp(state.influence, 0, 100)}%`;
+
+    els.age.textContent = formatAge(state.ageTicks);
+    els.epoch.textContent = romanEpoch(state.epoch);
+    els.faultCount.textContent = state.faults.length;
+
+    els.releaseBtn.disabled = state.influence < RELEASE_COST;
+    els.releaseCost.textContent = RELEASE_COST;
+  }
+
+  function frame() {
+    drawPlanet();
+    renderHUD();
+    requestAnimationFrame(frame);
+  }
+
+  els.releaseBtn.addEventListener('click', () => performRelease({ auto: false }));
+  els.pauseBtn.addEventListener('click', () => {
+    state.paused = !state.paused;
+    els.pauseBtn.textContent = state.paused ? 'Resume' : 'Pause';
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && !e.repeat) {
+      e.preventDefault();
+      performRelease({ auto: false });
+    }
+    if (e.key === 'p' || e.key === 'P') {
+      els.pauseBtn.click();
+    }
+  });
+
+  setInterval(tick, TICK_MS);
+  requestAnimationFrame(frame);
+})();

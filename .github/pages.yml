@@ -24,6 +24,10 @@ sites:
     path: bubble-sort-visualizer
     description: "Bubble sort visualization with color-tagged elements and metrics tracking"
 
+  - name: planet-game
+    path: planet-game
+    description: "Geological idle game — guide a planet through epochs; pressure always releases"
+
   # Add more static sites here:
   # - name: another-app
   #   path: another-app
