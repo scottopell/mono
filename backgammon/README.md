@@ -21,6 +21,10 @@ Then open http://localhost:8080 in two browser tabs (or two devices on
 the same network). Click **New Game** in one, copy the code to the
 **Join** field in the other.
 
+For solo playtesting, click **Play locally (one device)** — runs a
+hotseat game on the same device. The board flips perspective to the
+active player each turn.
+
 ## Deployment
 
 Static site — publish to GitHub Pages or any static host. Before

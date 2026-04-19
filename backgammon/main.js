@@ -8,8 +8,8 @@
   const peer = window.BackgammonPeer;
 
   const app = {
-    role: null,           // 'host' | 'guest'
-    perspective: null,    // 'p1' | 'p2'
+    role: null,           // 'host' | 'guest' | 'local'
+    perspective: null,    // 'p1' | 'p2' — in local mode, follows state.turn
     state: null,
     peerApi: null,
     selected: null,       // current move-source ('bar', 0..23, or null)
@@ -24,6 +24,7 @@
     screenWaiting: document.getElementById('screen-waiting'),
     screenGame: document.getElementById('screen-game'),
     btnNewGame: document.getElementById('btn-new-game'),
+    btnLocal: document.getElementById('btn-local'),
     joinForm: document.getElementById('join-form'),
     joinCode: document.getElementById('join-code'),
     lobbyError: document.getElementById('lobby-error'),
@@ -107,6 +108,18 @@
     showScreen('lobby');
   });
 
+  // --- Lobby: local hotseat (solo playtest, no peer) ---
+
+  el.btnLocal.addEventListener('click', () => {
+    el.lobbyError.textContent = '';
+    app.role = 'local';
+    app.perspective = 'p1';
+    setStatus('idle');
+    const s = rules.initialState();
+    setState(s, { broadcast: false });
+    enterGame();
+  });
+
   // --- Lobby: guest ---
 
   el.joinForm.addEventListener('submit', (e) => {
@@ -151,7 +164,6 @@
   // --- Enter game screen ---
 
   function enterGame() {
-    el.youLabel.textContent = `You — ${app.perspective}`;
     showScreen('game');
     // Defer so the browser has laid out the newly-visible canvas before we measure.
     requestAnimationFrame(resizeAndRender);
@@ -162,6 +174,10 @@
   function setState(s, { broadcast }) {
     app.state = s;
     app.selected = null;
+    // In local hotseat, the device always shows the active player's perspective.
+    if (app.role === 'local' && s && s.phase !== 'gameover') {
+      app.perspective = s.turn;
+    }
     if (broadcast && app.role === 'host' && app.peerApi) {
       app.peerApi.send({ type: 'state', state: serializeState(s) });
     }
@@ -187,7 +203,7 @@
   // --- Intents (REQ-BG-012) ---
 
   function sendIntent(intent) {
-    if (app.role === 'host') {
+    if (app.role === 'host' || app.role === 'local') {
       applyIntentOnHost({ type: 'intent', ...intent });
     } else if (app.peerApi) {
       app.peerApi.send({ type: 'intent', ...intent });
@@ -234,24 +250,36 @@
   function renderUi() {
     if (!app.state) return;
 
+    const isLocal = app.role === 'local';
+    el.youLabel.textContent = isLocal
+      ? `Hotseat — ${labelFor(app.state.turn)} to act`
+      : `You — ${labelFor(app.perspective)}`;
+
     // Turn indicator
     if (app.state.phase === 'gameover') {
-      const youWon = app.state.winner === app.perspective;
-      el.turnIndicator.textContent = youWon ? 'You win!' : 'Opponent wins';
+      const winnerLabel = labelFor(app.state.winner);
+      el.turnIndicator.textContent = isLocal
+        ? `${winnerLabel} wins!`
+        : (app.state.winner === app.perspective ? 'You win!' : 'Opponent wins');
       el.turnIndicator.classList.remove('waiting');
-      el.message.textContent = youWon
-        ? 'All 15 borne off. Nice game.'
-        : 'Game over.';
+      el.message.textContent = 'All 15 borne off. Nice game.';
       el.message.classList.add('win');
     } else {
       el.message.classList.remove('win');
       const yourTurn = app.state.turn === app.perspective;
-      if (app.state.phase === 'roll') {
-        el.turnIndicator.textContent = yourTurn ? 'Your turn — roll' : "Waiting for opponent's roll…";
+      const verb = app.state.phase === 'roll' ? 'roll' : 'move';
+      if (isLocal) {
+        el.turnIndicator.textContent = `${labelFor(app.state.turn)} — ${verb}`;
+        el.turnIndicator.classList.remove('waiting');
+      } else if (yourTurn) {
+        el.turnIndicator.textContent = `Your turn — ${verb}`;
+        el.turnIndicator.classList.remove('waiting');
       } else {
-        el.turnIndicator.textContent = yourTurn ? 'Your turn — move' : "Waiting for opponent…";
+        el.turnIndicator.textContent = app.state.phase === 'roll'
+          ? "Waiting for opponent's roll…"
+          : 'Waiting for opponent…';
+        el.turnIndicator.classList.add('waiting');
       }
-      el.turnIndicator.classList.toggle('waiting', !yourTurn);
       el.message.textContent = '';
     }
 
@@ -262,7 +290,12 @@
     const yourTurn = app.state.turn === app.perspective;
     el.btnRoll.classList.toggle('hidden', !(yourTurn && app.state.phase === 'roll'));
     el.btnPass.classList.add('hidden'); // auto-handled by rules engine in v1
-    el.btnNew.classList.toggle('hidden', app.state.phase !== 'gameover' || app.role !== 'host');
+    const canReset = app.role === 'host' || app.role === 'local';
+    el.btnNew.classList.toggle('hidden', app.state.phase !== 'gameover' || !canReset);
+  }
+
+  function labelFor(player) {
+    return player === 'p1' ? 'Player 1' : 'Player 2';
   }
 
   function renderDice() {
