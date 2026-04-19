@@ -345,6 +345,7 @@
 
   // ---------- Misc ----------
 
+  // Builds the path for a rounded rectangle. Caller decides fill/stroke.
   function roundRect(ctx, x, y, w, h, r) {
     ctx.beginPath();
     ctx.moveTo(x + r, y);
@@ -353,7 +354,6 @@
     ctx.arcTo(x, y + h, x, y, r);
     ctx.arcTo(x, y, x + w, y, r);
     ctx.closePath();
-    ctx.fill();
   }
 
   // Size the canvas to fit its wrap while maintaining a 3:2 aspect ratio.

@@ -155,12 +155,12 @@ WHEN you have used both dice (or all four on doubles)
 THE SYSTEM SHALL automatically pass the turn to your opponent
 
 WHEN you have no legal move with any remaining die
-THE SYSTEM SHALL offer a "Pass" control that forfeits the remaining dice and
-passes the turn
+THE SYSTEM SHALL automatically forfeit the remaining dice and pass the turn
 
-**Rationale:** Backgammon has an awkward rule where unplayable dice are
-simply lost. Making that visible (rather than silently advancing) helps new
-or returning players understand why their turn ended early.
+**Rationale:** Backgammon has a rule where unplayable dice are simply lost.
+Automating the forfeit keeps the game moving at the pace of thinking rather
+than forcing players to tap through a redundant confirmation for a result
+they can't change.
 
 ---
 

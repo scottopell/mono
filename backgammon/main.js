@@ -35,7 +35,6 @@
     turnIndicator: document.getElementById('turn-indicator'),
     diceRow: document.getElementById('dice-row'),
     btnRoll: document.getElementById('btn-roll'),
-    btnPass: document.getElementById('btn-pass'),
     btnNew: document.getElementById('btn-new'),
     message: document.getElementById('message'),
   };
@@ -294,7 +293,6 @@
     // Buttons
     const yourTurn = app.state.turn === app.perspective;
     el.btnRoll.classList.toggle('hidden', !(yourTurn && app.state.phase === 'roll'));
-    el.btnPass.classList.add('hidden'); // auto-handled by rules engine in v1
     const canReset = app.role === 'host' || app.role === 'local';
     el.btnNew.classList.toggle('hidden', app.state.phase !== 'gameover' || !canReset);
   }

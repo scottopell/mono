@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#1a140c">
   <title>Backgammon</title>
   <link rel="stylesheet" href="style.css">
@@ -27,7 +27,7 @@
             id="join-code"
             name="join-code"
             type="text"
-            inputmode="latin"
+            inputmode="text"
             autocapitalize="characters"
             maxlength="6"
             spellcheck="false"
@@ -66,7 +66,6 @@
         <div class="dice-row" id="dice-row" aria-live="polite"></div>
         <div class="actions">
           <button id="btn-roll" class="btn btn-primary hidden">Roll dice</button>
-          <button id="btn-pass" class="btn hidden">Pass (no legal moves)</button>
           <button id="btn-new" class="btn btn-primary hidden">New Game</button>
         </div>
         <p id="message" class="message" aria-live="polite"></p>

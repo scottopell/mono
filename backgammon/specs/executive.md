@@ -62,19 +62,20 @@ perspective argument and draws to Canvas 2D. Connection layer
 | **REQ-BG-006:** Prevent Illegal Moves | ✅ Complete | Host validates via `applyMove`; bar re-entry forced before other moves |
 | **REQ-BG-007:** Send a Hit Checker to the Bar | ✅ Complete | Hit detection in `applyMove`; bar counts render on both devices |
 | **REQ-BG-008:** Bear Off When All Checkers Are Home | ✅ Complete | Standard bear-off rules including overshoot-from-highest |
-| **REQ-BG-009:** End the Turn When Dice Are Exhausted | ✅ Complete | Auto-advance when no legal moves; explicit Pass button when stuck |
+| **REQ-BG-009:** End the Turn When Dice Are Exhausted | ✅ Complete | Auto-advance when dice used or no legal moves remain |
 | **REQ-BG-010:** Declare a Winner | ✅ Complete | Winner banner + "New Game" button to reset |
-| **REQ-BG-011:** Show Connection Status | 🟡 Functional | Indicator shows connected/reconnecting/lost; reconnect attempts preserve state, full session restart needed on hard drop |
+| **REQ-BG-011:** Show Connection Status | ✅ Complete | Indicator shows connected/waiting/reconnecting/lost; guest auto-reconnects the DataConnection with exponential backoff (3 attempts) before declaring the session lost |
 | **REQ-BG-012:** Keep Game State Authoritative and Consistent | ✅ Complete | Host-only mutations; guest mirrors state broadcasts |
 
-**Progress:** 11 of 12 complete, 1 functional-with-gaps
+**Progress:** 12 of 12 complete
 
 **Known gaps:**
 
 - Higher-die-must-be-used rule (when only one die is playable) is not
   enforced — noted in design.md for v2.
 - Hard network drops that outlast three auto-reconnect attempts
-  require re-entering the room code manually. Host state is preserved;
-  only the connection needs rebuilding.
+  surface as "lost" in the status indicator and require re-entering
+  the room code manually. Host state is preserved; only the
+  connection needs rebuilding.
 - No smooth animation between move states (v1 uses snap-to-position
   per the vision doc's deferred list).
