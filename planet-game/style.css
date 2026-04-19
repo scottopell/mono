@@ -72,7 +72,9 @@ header h1 {
   max-width: 560px;
   width: 100%;
   margin: 0 auto;
-  touch-action: manipulation;
+  /* `none` (not `manipulation`) so press-and-hold charge taps aren't
+     cancelled by the browser's default scroll/zoom gesture on iOS. */
+  touch-action: none;
   user-select: none;
   -webkit-user-select: none;
   cursor: pointer;
@@ -343,6 +345,27 @@ button:disabled {
   text-transform: lowercase;
   letter-spacing: 0.04em;
   font-weight: 500;
+}
+
+#log li .tier-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  margin: 0 2px;
+  font-size: 0.72rem;
+  border-radius: 3px;
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+}
+
+#log li .tier-focused {
+  background: rgba(201, 168, 91, 0.2);
+  color: #d9bf7a;
+}
+
+#log li .tier-deep {
+  background: rgba(232, 110, 60, 0.22);
+  color: #f09874;
 }
 
 footer {

@@ -26,9 +26,21 @@
   const TICK_MS = 100;
   const PRESSURE_RATE = 0.45;        // pressure units per second
   const INFLUENCE_BASE = 0.9;        // influence per second, scales w/ pressure
-  const RELEASE_COST = 10;           // influence spent per voluntary release
+  const RELEASE_COST = 10;           // influence spent per voluntary release (Normal tier)
   const AUTO_RELEASE_PENALTY = 0.35; // extra downward bias on unforced discharge (Law III)
   const STABILITY_GOAL = 100;        // crossing this advances the epoch (Law VI)
+
+  // Charged release tiers — hold the tap longer to pour more Will into the
+  // release. Multiplier scales the delta on BOTH sides: a Deep tap on
+  // virgin crust is a big win; a Deep tap on scarred crust is a big loss.
+  // Ground choice matters more when you're charged. Hold thresholds are
+  // in milliseconds; the pie-chart indicator shows progress.
+  const CHARGE_TIERS = [
+    { label: 'Normal',  holdMs: 0,    will: 10,  mult: 1 },
+    { label: 'Focused', holdMs: 400,  will: 50,  mult: 2 },
+    { label: 'Deep',    holdMs: 1000, will: 100, mult: 3 },
+  ];
+  const CHARGE_MAX_MS = 1300;        // past this the ring is full; no further tier
 
   // Time-flow tuning (Law I)
   const MAX_CATCHUP_MS = 10 * 60 * 1000; // cap offline catchup at 10 minutes of sim-time
@@ -416,9 +428,10 @@
     }
   }
 
-  function performRelease({ auto = false, x = null, y = null } = {}) {
-    if (!auto && state.influence < RELEASE_COST) return;
-    if (!auto) state.influence -= RELEASE_COST;
+  function performRelease({ auto = false, x = null, y = null, tier = CHARGE_TIERS[0] } = {}) {
+    const { will, mult } = tier;
+    if (!auto && state.influence < will) return;
+    if (!auto) state.influence -= will;
 
     let px = x, py = y;
     if (px == null || py == null) {
@@ -432,7 +445,8 @@
     const { floor, ceiling, scarring } = releaseBounds(P, density, auto);
 
     const roll = Math.random();
-    const delta = floor + roll * (ceiling - floor);
+    const rawDelta = floor + roll * (ceiling - floor);
+    const delta = auto ? rawDelta : rawDelta * mult;
     state.stability = clamp(state.stability + delta, 0, 100);
 
     const severity = clamp(P / 100, 0.08, 1);
@@ -460,6 +474,7 @@
       delta,
       auto,
       scarring,
+      tier: auto ? null : tier.label,
     });
 
     // Feedback marker — the ring AND the floating delta number. Players
@@ -493,21 +508,24 @@
   // volcanic ridge at the vent site AND resurfaces nearby faults, so the
   // planet gains stability AND heals simultaneously. This is what makes
   // scarring worth having: it's fuel for the repair cycle.
-  function performVolcanicRelease({ auto = false, x, y } = {}) {
+  function performVolcanicRelease({ auto = false, x, y, tier = CHARGE_TIERS[0] } = {}) {
     if (x == null || y == null) return false;
+    const { will, mult } = tier;
     if (!auto) {
       if (state.volcanic < VOLCANIC_MIN_RELEASE) return false;
-      if (state.influence < RELEASE_COST) return false;
-      state.influence -= RELEASE_COST;
+      if (state.influence < will) return false;
+      state.influence -= will;
     }
 
     const V = state.volcanic;
     // Positive delta scaled by V. Manual vents carry a patience bonus;
     // auto eruptions are louder but less useful (Law III — unchosen hurts).
+    // Charged vents apply the same tier multiplier as tectonic releases.
     const base = V / 11;                          // ~9 at V=100
     const variance = 0.4 + Math.random() * 0.55;  // 0.4..0.95
     let delta = base * variance;
     if (auto) delta *= 0.35;
+    else delta *= mult;
     state.stability = clamp(state.stability + delta, 0, 100);
 
     // New volcanic ridge — always positive, always bright. Tagged so the
@@ -550,6 +568,7 @@
       V: Math.round(V),
       delta,
       auto,
+      tier: auto ? null : tier.label,
     });
 
     state.lastTap = {
@@ -602,13 +621,17 @@
       const sign = e.delta >= 0 ? '+' : '';
       const cls = e.delta >= 0 ? 'good' : 'bad';
       const autoTag = e.auto ? ' <span class="eruption-tag">unforced</span>' : '';
+      // Tier tag — only show for Focused/Deep; Normal is the default and
+      // doesn't need to crowd the log.
+      const tierTag = (e.tier && e.tier !== 'Normal')
+        ? ` <span class="tier-tag tier-${e.tier.toLowerCase()}">${e.tier.toLowerCase()}</span>` : '';
       if (e.volcanic) {
         const vLabel = e.auto ? 'Hotspot burst' : 'Vented';
-        return `<li><span class="age">${formatAge(e.ageTicks)}</span>${vLabel} at V${e.V} <span class="volcanic-tag">volcanic</span> → stability <span class="${cls}">${sign}${e.delta.toFixed(1)}</span>${autoTag}</li>`;
+        return `<li><span class="age">${formatAge(e.ageTicks)}</span>${vLabel} at V${e.V}${tierTag} <span class="volcanic-tag">volcanic</span> → stability <span class="${cls}">${sign}${e.delta.toFixed(1)}</span>${autoTag}</li>`;
       }
       const label = e.auto ? 'Erupted' : 'Released';
       const zone = e.scarring != null ? ` <span class="zone">${zoneLabel(e.scarring)}</span>` : '';
-      return `<li><span class="age">${formatAge(e.ageTicks)}</span>${label} at P${e.P}${zone} → stability <span class="${cls}">${sign}${e.delta.toFixed(1)}</span>${autoTag}</li>`;
+      return `<li><span class="age">${formatAge(e.ageTicks)}</span>${label} at P${e.P}${zone}${tierTag} → stability <span class="${cls}">${sign}${e.delta.toFixed(1)}</span>${autoTag}</li>`;
     }).join('');
     if (els.logCount) els.logCount.textContent = state.log.length ? String(state.log.length) : '';
   }
@@ -812,6 +835,101 @@
 
     drawHotspots();
     drawLastTap();
+    drawChargeIndicator();
+  }
+
+  // Pie-chart charge ring — appears at the pointerdown location and fills
+  // clockwise as the player holds. Three tick marks on the outer edge
+  // show tier thresholds (Normal / Focused / Deep). Color ramps cooler→
+  // warmer as hold progresses so you can feel the tier shift peripherally.
+  function drawChargeIndicator() {
+    if (!activeCharge) return;
+    const { cx, cy, r } = view;
+    const px = cx + activeCharge.x * r;
+    const py = cy + activeCharge.y * r;
+    const heldMs = performance.now() - activeCharge.startedMs;
+    const progress = clamp(heldMs / CHARGE_MAX_MS, 0, 1);
+    const tier = tierFromHold(heldMs);
+    const ringR = Math.max(24, r * 0.12);
+    const twoPi = Math.PI * 2;
+    const start = -Math.PI / 2; // 12 o'clock
+
+    // Not enough Will for even Normal — show a brief text cue at the tap
+    // point and bail. No ring (a ring would misleadingly suggest the
+    // hold is doing something).
+    if (!tier) {
+      const need = CHARGE_TIERS[0].will;
+      const fontSize = Math.max(12, Math.round(r * 0.065));
+      ctx.save();
+      ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+      for (const [ox, oy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+        ctx.fillText(`need ${need} will`, px + ox, py + oy);
+      }
+      ctx.fillStyle = 'rgba(240, 180, 170, 0.95)';
+      ctx.fillText(`need ${need} will`, px, py);
+      ctx.restore();
+      return;
+    }
+
+    ctx.save();
+
+    // Unfilled track — subtle dark halo so the fill has contrast.
+    ctx.strokeStyle = 'rgba(10, 12, 18, 0.55)';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.arc(px, py, ringR, 0, twoPi);
+    ctx.stroke();
+
+    // Filled arc — hue slides from tan through amber to hot red as progress climbs.
+    const hue = 42 - progress * 30;                   // 42 (tan) → 12 (red-orange)
+    const sat = 30 + progress * 60;                   // 30 → 90
+    const light = 62 + progress * 4;
+    ctx.strokeStyle = `hsla(${hue}, ${sat}%, ${light}%, 0.95)`;
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(px, py, ringR, start, start + progress * twoPi);
+    ctx.stroke();
+
+    // Tier tick marks — small outward notches on the ring where each
+    // tier kicks in. Highlights the current one.
+    for (let i = 1; i < CHARGE_TIERS.length; i++) {
+      const t = CHARGE_TIERS[i];
+      const frac = t.holdMs / CHARGE_MAX_MS;
+      const ang = start + frac * twoPi;
+      const x0 = px + Math.cos(ang) * (ringR - 4);
+      const y0 = py + Math.sin(ang) * (ringR - 4);
+      const x1 = px + Math.cos(ang) * (ringR + 6);
+      const y1 = py + Math.sin(ang) * (ringR + 6);
+      const reached = heldMs >= t.holdMs;
+      ctx.strokeStyle = reached
+        ? 'rgba(255, 220, 180, 0.95)'
+        : 'rgba(220, 210, 190, 0.35)';
+      ctx.lineWidth = reached ? 2.5 : 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
+    }
+
+    // Tier label — floats under the ring so you can read the current mode.
+    const fontSize = Math.max(12, Math.round(r * 0.075));
+    ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    const label = `${tier.label.toLowerCase()} · ${tier.will} will`;
+    const ty = py + ringR + 10;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    for (const [ox, oy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+      ctx.fillText(label, px + ox, ty + oy);
+    }
+    ctx.fillStyle = `hsla(${hue}, ${sat}%, ${Math.min(92, light + 25)}%, 1)`;
+    ctx.fillText(label, px, ty);
+
+    ctx.restore();
   }
 
   function drawHotspots() {
@@ -862,6 +980,10 @@
     els.hint.classList.toggle('urgent', urgent);
 
     const volcReady = state.volcanic >= VOLCANIC_MIN_RELEASE && hotspotsCache.length > 0 && ready;
+    // When Will stockpiles past the Focused threshold, signal that holding
+    // pays off. Past Deep, suggest the heaviest tier.
+    const canFocus = state.influence >= CHARGE_TIERS[1].will;
+    const canDeep  = state.influence >= CHARGE_TIERS[2].will;
 
     if (urgent && ready) {
       els.hint.textContent = 'pressure cresting — choose where to let it go';
@@ -870,6 +992,10 @@
       els.hint.textContent = `pressure cresting — will ${pct}% (it will erupt without you)`;
     } else if (volcReady) {
       els.hint.textContent = 'a hotspot glows — tap to vent and heal the scars around it';
+    } else if (canDeep) {
+      els.hint.textContent = 'hold to focus — release deep for a heavier tap';
+    } else if (canFocus) {
+      els.hint.textContent = 'hold the tap a beat longer for a focused release';
     } else if (ready) {
       els.hint.textContent = 'focus the pressure — smooth crust feels steadier';
     } else {
@@ -921,22 +1047,74 @@
     return { x: dx / view.r, y: dy / view.r };
   }
 
-  function handleStageTap(e) {
-    const point = e.changedTouches ? e.changedTouches[0] : e;
-    const p = pointFromClient(point.clientX, point.clientY);
-    if (!p) return;
-    // If the tap hits a hotspot AND volcanic is charged enough to vent,
-    // route to the volcanic path. Falls through to tectonic otherwise,
-    // so the hotspot overlay doesn't dead-zone half the planet.
-    const hit = findHotspotAt(p.x, p.y);
-    if (hit && state.volcanic >= VOLCANIC_MIN_RELEASE && state.influence >= RELEASE_COST) {
-      performVolcanicRelease({ auto: false, x: hit.x, y: hit.y });
-      return;
+  // Charge tracking — ephemeral UI state, not persisted. Records the tap
+  // location at pointerdown; pointerup reads the elapsed time and picks
+  // the highest tier the player can afford.
+  let activeCharge = null; // { x, y, startedMs, pointerId }
+
+  function tierFromHold(heldMs) {
+    // Walk the tier table from highest to lowest and pick the first one
+    // whose threshold we've crossed AND the player can afford. Returns
+    // null if the player cannot afford any tier (including Normal), so
+    // the caller can suppress the release and surface a clear "need N"
+    // cue instead of silently no-opping inside performRelease.
+    for (let i = CHARGE_TIERS.length - 1; i >= 0; i--) {
+      const t = CHARGE_TIERS[i];
+      if (heldMs >= t.holdMs && state.influence >= t.will) return t;
     }
-    performRelease({ auto: false, x: p.x, y: p.y });
+    return null;
   }
 
-  els.stage.addEventListener('click', handleStageTap);
+  function resolveTap(px, py, tier) {
+    if (!tier) return null;
+    // If the tap lands on a hotspot AND volcanic is charged, route volcanic.
+    // Falls through to tectonic otherwise so the hotspot overlay doesn't
+    // dead-zone half the planet.
+    const hit = findHotspotAt(px, py);
+    if (hit && state.volcanic >= VOLCANIC_MIN_RELEASE && state.influence >= tier.will) {
+      return performVolcanicRelease({ auto: false, x: hit.x, y: hit.y, tier });
+    }
+    return performRelease({ auto: false, x: px, y: py, tier });
+  }
+
+  function onPointerDown(e) {
+    if (e.button !== undefined && e.button !== 0) return; // left/primary only
+    // Ignore additional pointerdowns while a charge is already in flight,
+    // otherwise multi-touch (or an accidental double-press) would orphan
+    // the first pointer's capture and leave activeCharge in a bad state.
+    if (activeCharge) return;
+    const p = pointFromClient(e.clientX, e.clientY);
+    if (!p) return;
+    // setPointerCapture so pointerup always lands on this element even if
+    // the finger drifts off the canvas during the hold.
+    try { els.stage.setPointerCapture(e.pointerId); } catch (_) {}
+    activeCharge = {
+      x: p.x, y: p.y,
+      startedMs: performance.now(),
+      pointerId: e.pointerId,
+    };
+    e.preventDefault();
+  }
+
+  function onPointerUp(e) {
+    if (!activeCharge || e.pointerId !== activeCharge.pointerId) return;
+    const held = performance.now() - activeCharge.startedMs;
+    const { x, y } = activeCharge;
+    activeCharge = null;
+    try { els.stage.releasePointerCapture(e.pointerId); } catch (_) {}
+    const tier = tierFromHold(held);
+    resolveTap(x, y, tier);
+  }
+
+  function onPointerCancel(e) {
+    if (!activeCharge || e.pointerId !== activeCharge.pointerId) return;
+    activeCharge = null;
+    try { els.stage.releasePointerCapture(e.pointerId); } catch (_) {}
+  }
+
+  els.stage.addEventListener('pointerdown', onPointerDown);
+  els.stage.addEventListener('pointerup', onPointerUp);
+  els.stage.addEventListener('pointercancel', onPointerCancel);
   els.pauseBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     state.paused = !state.paused;
