@@ -7,7 +7,10 @@
 //                                    the tab is backgrounded or the browser throttles timers.
 //   II.  All change is permanent   → state.faults is append-only; epoch advance preserves it.
 //                                    state.planetSeed fixes the terrain so the same world
-//                                    carries forward across epochs.
+//                                    carries forward across epochs. Full state is serialized
+//                                    to localStorage (key "planet-game:save") on a 1s cadence
+//                                    plus pagehide/beforeunload/visibilitychange, so reloads
+//                                    don't wipe history.
 //   III. Pressure always releases  → tick() auto-calls performRelease({auto:true}) at cap
 //   IV.  Probabilistic outcomes    → performRelease() rolls in [floor, ceiling] scaled by P
 //   V.   Complexity is generative  → faultDensityAt(x,y) modulates each release's distribution:
@@ -40,6 +43,12 @@
   const NOISE_SCALE = 3.2;           // continents per planet width
   const NOISE_OCTAVES = 4;
 
+  // Persistence (Law II): save everything that would hurt to lose across a
+  // page reload. Ephemeral UI (paused, lastTap) is intentionally excluded.
+  const SAVE_KEY = 'planet-game:save';
+  const SAVE_VERSION = 1;
+  const SAVE_INTERVAL_MS = 1000;
+
   const state = {
     ageTicks: 0,
     pressure: 0,
@@ -52,6 +61,47 @@
     lastTap: null,                   // {x, y, density, bornAt} — preview marker on the planet
     planetSeed: (Math.random() * 0xffffffff) >>> 0,
   };
+
+  function persistState() {
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify({
+        v: SAVE_VERSION,
+        planetSeed: state.planetSeed,
+        ageTicks: state.ageTicks,
+        pressure: state.pressure,
+        influence: state.influence,
+        stability: state.stability,
+        epoch: state.epoch,
+        faults: state.faults,
+        log: state.log,
+      }));
+    } catch (_) {
+      // localStorage unavailable (private mode, quota, disabled) — fail silent.
+    }
+  }
+
+  function loadSavedState() {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) return null;
+      const saved = JSON.parse(raw);
+      if (!saved || saved.v !== SAVE_VERSION) return null;
+      return saved;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function applySavedState(saved) {
+    state.planetSeed = (saved.planetSeed >>> 0) || state.planetSeed;
+    state.ageTicks   = Math.max(0, saved.ageTicks | 0);
+    state.pressure   = Math.max(0, Math.min(100, Number(saved.pressure) || 0));
+    state.influence  = Math.max(0, Number(saved.influence) || 0);
+    state.stability  = Math.max(0, Math.min(100, Number(saved.stability) || 50));
+    state.epoch      = Math.max(1, saved.epoch | 0);
+    state.faults     = Array.isArray(saved.faults) ? saved.faults : [];
+    state.log        = Array.isArray(saved.log) ? saved.log : [];
+  }
 
   const $ = (id) => document.getElementById(id);
   const els = {
@@ -617,11 +667,25 @@
     }
   }
 
+  // Restore save (if any) before anything reads planetSeed or draws the HUD.
+  const savedState = loadSavedState();
+  if (savedState) applySavedState(savedState);
+  renderLog();
+
   sizeCanvas();
   bakeTerrain();
   setInterval(driveLoop, TICK_MS);
+  setInterval(persistState, SAVE_INTERVAL_MS);
+
+  // Also persist on the events most likely to precede a reload/tab-close,
+  // so nothing is lost between the periodic saves. pagehide is what iOS
+  // Safari actually fires (beforeunload is unreliable there).
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) driveLoop();
+    if (document.hidden) persistState();
+    else driveLoop();
   });
+  window.addEventListener('pagehide', persistState);
+  window.addEventListener('beforeunload', persistState);
+
   requestAnimationFrame(frame);
 })();

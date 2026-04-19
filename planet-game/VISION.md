@@ -63,7 +63,7 @@ These silently determine what's possible in later epochs.
 | Law / System | Status | Notes |
 |---|---|---|
 | I. Time always passes | ✅ | `driveLoop()` in `game.js` uses `performance.now()` deltas plus a `visibilitychange` catchup, so sim-time advances even when the tab is backgrounded and browsers throttle `setInterval`. Offline catchup is capped at 10 minutes. |
-| II. All change is permanent | 🟡 | Faults persist across epochs in memory, and a fixed `state.planetSeed` keeps the same world across epochs. No save-to-disk yet, so a reload still wipes history. |
+| II. All change is permanent | ✅ | Faults persist across epochs in memory, a fixed `state.planetSeed` keeps the same world across epochs, and full state is serialized to `localStorage` on a 1s cadence plus `pagehide`/`beforeunload`/`visibilitychange`. Reloads restore the same planet + history. |
 | III. Pressure always releases | ✅ | Auto-release fires at `pressure >= 99.99` with biased floor/ceiling. |
 | IV. Probabilistic outcomes | ✅ | `performRelease` rolls in `[floor, ceiling]` — bounds scale with pressure AND local scarring. |
 | V. Complexity is generative | ✅ | `faultDensityAt(x,y)` drives width and mean of the release distribution; virgin crust = tighter/positive, scarred = wider/negative drift. Density is measured at the 2D tap point. Positive releases render as bright ridges, negative as shadowed canyons, so history is legible as geology. Scarring heatmap ring remains for rim-visible activity. |

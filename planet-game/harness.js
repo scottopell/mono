@@ -142,11 +142,20 @@
 
   // --- Export --------------------------------------------------------------
 
+  // Recovery: clear the saved game and reload. The same thing a user can
+  // do via DevTools; exposed here so automation and rescue both have one
+  // obvious lever. Key must stay in sync with SAVE_KEY in game.js.
+  function resetSave() {
+    try { localStorage.removeItem('planet-game:save'); } catch (_) {}
+    location.reload();
+  }
+
   window.PlanetHarness = {
     tapPixel, tapPolar, tapFrac,
     pressPause, key,
     getState, getLog,
     waitFor, waitUntilReady,
     geom: planetGeom,
+    resetSave,
   };
 })();
