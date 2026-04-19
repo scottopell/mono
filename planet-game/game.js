@@ -43,8 +43,48 @@
   const NOISE_SCALE = 3.2;           // continents per planet width
   const NOISE_OCTAVES = 4;
 
-  // Persistence (Law II): save everything that would hurt to lose across a
-  // page reload. Ephemeral UI (paused, lastTap) is intentionally excluded.
+  // Law VI — each epoch has a name and a palette shift applied at bake time.
+  // Same seed, same continents, different mood: Hadean is red and molten,
+  // Cambrian is cool and aqueous, Stillness is pale and crystalline. The
+  // arc is 10 beats — molten youth → crystalline rest.
+  //
+  // tint = [rMul, gMul, bMul, whiteBlend]:
+  //   - rMul/gMul/bMul are multiplied into the shaded base RGB
+  //   - whiteBlend in [0,1] lifts the result toward white at the end
+  //     (pure multiplication can't brighten dark oceans toward "pale")
+  const EPOCHS = [
+    { name: 'Hadean',        tint: [1.55, 0.55, 0.42, 0.00] },
+    { name: 'Archean',       tint: [0.75, 0.90, 0.70, 0.00] },
+    { name: 'Proterozoic',   tint: [0.72, 1.05, 1.25, 0.00] },
+    { name: 'Cambrian',      tint: [0.60, 1.05, 1.35, 0.05] },
+    { name: 'Carboniferous', tint: [0.60, 1.35, 0.75, 0.00] },
+    { name: 'Mesozoic',      tint: [1.35, 1.05, 0.55, 0.08] },
+    { name: 'Cenozoic',      tint: [0.92, 1.10, 1.00, 0.05] },
+    { name: 'Anthropocene',  tint: [1.20, 0.92, 0.75, 0.10] },
+    { name: 'Twilight',      tint: [0.85, 0.72, 1.18, 0.00] },
+    { name: 'Stillness',     tint: [1.15, 1.15, 1.30, 0.45] },
+  ];
+  const MAX_EPOCH = EPOCHS.length;
+  const epochInfo = (n) => EPOCHS[clamp(n, 1, MAX_EPOCH) - 1];
+
+  // Volcanic axis — the second pressure system, inverse to tectonic in every
+  // meaningful way. Tectonic releases CREATE scars; volcanic releases HEAL
+  // them. Volcanic pressure builds faster the more scarred the planet is,
+  // so scarring stops being purely bad: it fuels the repair cycle. Without
+  // scars there are no hotspots, and volcanism has nowhere to vent.
+  const VOLCANIC_BASE_RATE = 0.04;       // baseline V-per-second on pristine crust
+  const VOLCANIC_PER_FAULT = 0.035;      // extra V/s per tracked fault
+  const VOLCANIC_FAULT_CAP = 50;         // saturates rate at this many faults
+  const VOLCANIC_MIN_RELEASE = 30;       // min V needed for a manual vent
+  const VOLCANIC_RESURFACE_RADIUS = 0.28;// normalized — how far resurfacing reaches
+  const VOLCANIC_RESURFACE_STRENGTH = 0.65; // 0..1 — how much nearby scarring fades
+  const VOLCANIC_PRUNE_SEVERITY = 0.06;  // faults below this after resurfacing are removed
+  const HOTSPOT_DENSITY_MIN = 0.55;      // crust density above this qualifies as a hotspot
+  const HOTSPOT_MAX = 6;                 // UI clarity cap — don't litter with dots
+  const HOTSPOT_GRID = 14;               // scan resolution for hotspot search
+  const HOTSPOT_HIT_R = 0.11;            // normalized tap radius for hotspot hit-testing
+
+
   const SAVE_KEY = 'planet-game:save';
   const SAVE_VERSION = 1;
   const SAVE_INTERVAL_MS = 1000;
@@ -52,6 +92,7 @@
   const state = {
     ageTicks: 0,
     pressure: 0,
+    volcanic: 0,
     influence: 0,
     stability: 50,
     faults: [],
@@ -69,6 +110,7 @@
         planetSeed: state.planetSeed,
         ageTicks: state.ageTicks,
         pressure: state.pressure,
+        volcanic: state.volcanic,
         influence: state.influence,
         stability: state.stability,
         epoch: state.epoch,
@@ -96,9 +138,10 @@
     state.planetSeed = (saved.planetSeed >>> 0) || state.planetSeed;
     state.ageTicks   = Math.max(0, saved.ageTicks | 0);
     state.pressure   = Math.max(0, Math.min(100, Number(saved.pressure) || 0));
+    state.volcanic   = Math.max(0, Math.min(100, Number(saved.volcanic) || 0));
     state.influence  = Math.max(0, Number(saved.influence) || 0);
     state.stability  = Math.max(0, Math.min(100, Number(saved.stability) || 50));
-    state.epoch      = Math.max(1, saved.epoch | 0);
+    state.epoch      = clamp(saved.epoch | 0, 1, MAX_EPOCH);
     state.faults     = Array.isArray(saved.faults) ? saved.faults : [];
     state.log        = Array.isArray(saved.log) ? saved.log : [];
   }
@@ -109,6 +152,8 @@
     stabilityFill: $('stability-fill'),
     pressureVal: $('pressure-val'),
     pressureFill: $('pressure-fill'),
+    volcanicVal: $('volcanic-val'),
+    volcanicFill: $('volcanic-fill'),
     influenceVal: $('influence-val'),
     influenceFill: $('influence-fill'),
     age: $('age'),
@@ -163,6 +208,53 @@
       d += f.severity * Math.exp(-(dx * dx + dy * dy) / s2);
     }
     return d;
+  }
+
+  // Hotspots — places where scarring has clustered enough that the mantle
+  // finds a path up. Recomputed whenever faults change (release, resurface,
+  // epoch advance), not per-frame. We scan a coarse grid, keep points above
+  // HOTSPOT_DENSITY_MIN, and prune neighbors so dots don't crowd.
+  let hotspotsCache = [];
+  function refreshHotspots() {
+    const candidates = [];
+    const step = 2 / HOTSPOT_GRID;
+    for (let i = -HOTSPOT_GRID; i <= HOTSPOT_GRID; i++) {
+      for (let j = -HOTSPOT_GRID; j <= HOTSPOT_GRID; j++) {
+        const x = i / HOTSPOT_GRID;
+        const y = j / HOTSPOT_GRID;
+        if (x * x + y * y > 0.85) continue; // keep hotspots off the rim
+        const d = faultDensityAt(x, y);
+        if (d >= HOTSPOT_DENSITY_MIN) candidates.push({ x, y, d });
+      }
+    }
+    candidates.sort((a, b) => b.d - a.d);
+    const picked = [];
+    const minSep2 = (step * 2.5) * (step * 2.5);
+    for (const c of candidates) {
+      const tooClose = picked.some(p => {
+        const dx = p.x - c.x, dy = p.y - c.y;
+        return (dx * dx + dy * dy) < minSep2;
+      });
+      if (!tooClose) picked.push(c);
+      if (picked.length >= HOTSPOT_MAX) break;
+    }
+    hotspotsCache = picked;
+  }
+
+  function findHotspotAt(px, py) {
+    const r2 = HOTSPOT_HIT_R * HOTSPOT_HIT_R;
+    let best = null, bestD = Infinity;
+    for (const h of hotspotsCache) {
+      const dx = h.x - px, dy = h.y - py;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < r2 && d2 < bestD) { best = h; bestD = d2; }
+    }
+    return best;
+  }
+
+  function volcanicRate() {
+    const n = Math.min(state.faults.length, VOLCANIC_FAULT_CAP);
+    return VOLCANIC_BASE_RATE + VOLCANIC_PER_FAULT * n;
   }
 
   // Uniform random point on the planet disk (for unforced discharges
@@ -239,6 +331,9 @@
     const data = img.data;
     const seed = state.planetSeed;
     const half = TERRAIN_RES / 2;
+    // Law VI — epoch tint recolors the same seeded terrain. Continents stay
+    // put; the mood shifts.
+    const [tr, tg, tb, tw] = epochInfo(state.epoch).tint;
 
     for (let py = 0; py < TERRAIN_RES; py++) {
       for (let px = 0; px < TERRAIN_RES; px++) {
@@ -262,9 +357,11 @@
 
         const [r, g, b] = heightToColor(h);
         const k = shade * limb;
-        data[idx]     = Math.min(255, r * k);
-        data[idx + 1] = Math.min(255, g * k);
-        data[idx + 2] = Math.min(255, b * k);
+        const rr = r * k * tr, gg = g * k * tg, bb = b * k * tb;
+        const inv = 1 - tw;
+        data[idx]     = Math.min(255, rr * inv + 255 * tw);
+        data[idx + 1] = Math.min(255, gg * inv + 255 * tw);
+        data[idx + 2] = Math.min(255, bb * inv + 255 * tw);
         data[idx + 3] = 255;
       }
     }
@@ -297,6 +394,7 @@
 
     const dt = TICK_MS / 1000;
     state.pressure = clamp(state.pressure + PRESSURE_RATE * dt, 0, 100);
+    state.volcanic = clamp(state.volcanic + volcanicRate() * dt, 0, 100);
 
     const pressureBonus = 1 + state.pressure / 200;
     state.influence += INFLUENCE_BASE * dt * pressureBonus;
@@ -305,6 +403,16 @@
       // Unforced discharge: location is random (you didn't choose)
       const p = randomDiskPoint();
       performRelease({ auto: true, x: p.x, y: p.y });
+    }
+    if (state.volcanic >= 99.99) {
+      // Volcanism needs a hotspot to vent. If there isn't one (pristine
+      // crust), the heat simmers just short of peak — it can't go anywhere.
+      const target = hotspotsCache[0];
+      if (target) {
+        performVolcanicRelease({ auto: true, x: target.x, y: target.y });
+      } else {
+        state.volcanic = 95;
+      }
     }
   }
 
@@ -363,16 +471,99 @@
       bornAt: state.ageTicks,
     };
 
-    if (state.stability >= STABILITY_GOAL && state.epoch < 10) {
+    refreshHotspots();
+    maybeAdvanceEpoch();
+    flashStage();
+  }
+
+  function maybeAdvanceEpoch() {
+    if (state.stability >= STABILITY_GOAL && state.epoch < MAX_EPOCH) {
       state.epoch += 1;
       state.stability = 55;
+      bakeTerrain(); // Law VI: epoch tint shifts, same continents
       pushLog({
         ageTicks: state.ageTicks,
         epochEnter: state.epoch,
       });
     }
+  }
 
+  // Volcanic release — the mirror of performRelease. Requires a hotspot
+  // target (existing or forced) and enough V built up. Creates a positive
+  // volcanic ridge at the vent site AND resurfaces nearby faults, so the
+  // planet gains stability AND heals simultaneously. This is what makes
+  // scarring worth having: it's fuel for the repair cycle.
+  function performVolcanicRelease({ auto = false, x, y } = {}) {
+    if (x == null || y == null) return false;
+    if (!auto) {
+      if (state.volcanic < VOLCANIC_MIN_RELEASE) return false;
+      if (state.influence < RELEASE_COST) return false;
+      state.influence -= RELEASE_COST;
+    }
+
+    const V = state.volcanic;
+    // Positive delta scaled by V. Manual vents carry a patience bonus;
+    // auto eruptions are louder but less useful (Law III — unchosen hurts).
+    const base = V / 11;                          // ~9 at V=100
+    const variance = 0.4 + Math.random() * 0.55;  // 0.4..0.95
+    let delta = base * variance;
+    if (auto) delta *= 0.35;
+    state.stability = clamp(state.stability + delta, 0, 100);
+
+    // New volcanic ridge — always positive, always bright. Tagged so the
+    // renderer can distinguish it from tectonic scars.
+    const severity = clamp(V / 100, 0.25, 1);
+    const angle = Math.atan2(y, x);
+    const offsetFrac = Math.sqrt(x * x + y * y);
+    state.faults.push({
+      x, y, angle,
+      lengthFrac: (30 + severity * 90) / 260,
+      widthFrac: (2 + severity * 3) / 260,
+      offsetFrac,
+      severity,
+      positive: true,
+      auto,
+      volcanic: true,
+      bornAt: state.ageTicks,
+    });
+
+    // Resurface nearby scars — radially weighted fade. Prune what's left
+    // below threshold so the repair feels real (fault count drops).
+    const newest = state.faults[state.faults.length - 1];
+    const r2 = VOLCANIC_RESURFACE_RADIUS * VOLCANIC_RESURFACE_RADIUS;
+    for (const f of state.faults) {
+      if (f === newest) continue;
+      const dx = f.x - x, dy = f.y - y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= r2) continue;
+      const nearness = 1 - d2 / r2;            // 0..1 with 1 at center
+      f.severity *= 1 - nearness * VOLCANIC_RESURFACE_STRENGTH;
+    }
+    state.faults = state.faults.filter(f =>
+      f === newest || f.severity > VOLCANIC_PRUNE_SEVERITY);
+
+    state.volcanic = 0;
+
+    pushLog({
+      ageTicks: state.ageTicks,
+      volcanic: true,
+      V: Math.round(V),
+      delta,
+      auto,
+    });
+
+    state.lastTap = {
+      x, y,
+      density: faultDensityAt(x, y),
+      delta, auto,
+      volcanic: true,
+      bornAt: state.ageTicks,
+    };
+
+    refreshHotspots();
+    maybeAdvanceEpoch();
     flashStage();
+    return true;
   }
 
   function flashStage() {
@@ -405,14 +596,19 @@
   function renderLog() {
     els.log.innerHTML = state.log.map((e) => {
       if (e.epochEnter) {
-        return `<li><span class="age">${formatAge(e.ageTicks)}</span>— Epoch <strong>${romanEpoch(e.epochEnter)}</strong> begins. Geology carries forward.</li>`;
+        const name = epochInfo(e.epochEnter).name;
+        return `<li><span class="age">${formatAge(e.ageTicks)}</span>— The <strong>${name}</strong> begins. Your memory carries forward.</li>`;
       }
       const sign = e.delta >= 0 ? '+' : '';
       const cls = e.delta >= 0 ? 'good' : 'bad';
-      const label = e.auto ? 'Eruption' : 'Release';
-      const eruptionTag = e.auto ? ' <span class="eruption-tag">red</span>' : '';
+      const autoTag = e.auto ? ' <span class="eruption-tag">unforced</span>' : '';
+      if (e.volcanic) {
+        const vLabel = e.auto ? 'Hotspot burst' : 'Vented';
+        return `<li><span class="age">${formatAge(e.ageTicks)}</span>${vLabel} at V${e.V} <span class="volcanic-tag">volcanic</span> → stability <span class="${cls}">${sign}${e.delta.toFixed(1)}</span>${autoTag}</li>`;
+      }
+      const label = e.auto ? 'Erupted' : 'Released';
       const zone = e.scarring != null ? ` <span class="zone">${zoneLabel(e.scarring)}</span>` : '';
-      return `<li><span class="age">${formatAge(e.ageTicks)}</span>${label} at P${e.P}${zone} → stability <span class="${cls}">${sign}${e.delta.toFixed(1)}</span>${eruptionTag}</li>`;
+      return `<li><span class="age">${formatAge(e.ageTicks)}</span>${label} at P${e.P}${zone} → stability <span class="${cls}">${sign}${e.delta.toFixed(1)}</span>${autoTag}</li>`;
     }).join('');
     if (els.logCount) els.logCount.textContent = state.log.length ? String(state.log.length) : '';
   }
@@ -454,9 +650,15 @@
 
     ctx.save();
 
-    // Expanding ring — red for eruptions, warm tan for voluntary releases.
-    const ringColor = auto ? `rgba(230, 95, 70, ${0.75 * life})`
-                           : `rgba(240, 220, 180, ${0.8 * life})`;
+    // Expanding ring — color encodes which system fired:
+    //   volcanic auto = red-orange burst
+    //   volcanic manual = warm orange vent
+    //   tectonic auto = red eruption
+    //   tectonic manual = warm tan release
+    const { volcanic } = state.lastTap;
+    const ringColor = volcanic
+      ? (auto ? `rgba(255, 120, 60, ${0.8 * life})` : `rgba(255, 175, 95, ${0.85 * life})`)
+      : (auto ? `rgba(230, 95, 70, ${0.75 * life})` : `rgba(240, 220, 180, ${0.8 * life})`);
     ctx.strokeStyle = ringColor;
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -546,8 +748,12 @@
         ctx.moveTo(x0, baseWidth * 0.45);
         ctx.lineTo(x1, baseWidth * 0.45);
         ctx.stroke();
-        // Bright ridge crest.
-        ctx.strokeStyle = `hsla(40, 22%, ${72 - 8 * (1 - freshness)}%, ${0.75 + 0.2 * freshness})`;
+        // Volcanic ridges are warmer and glow hotter when young; tectonic
+        // ridges stay neutral tan. Easy to tell lava from mountain.
+        const ridgeHue = f.volcanic ? 15 : 40;
+        const ridgeSat = f.volcanic ? 65 : 22;
+        const ridgeLight = f.volcanic ? (68 - 6 * (1 - freshness)) : (72 - 8 * (1 - freshness));
+        ctx.strokeStyle = `hsla(${ridgeHue}, ${ridgeSat}%, ${ridgeLight}%, ${0.75 + 0.2 * freshness})`;
         ctx.lineWidth = baseWidth * 0.75;
         ctx.beginPath();
         ctx.moveTo(x0, -baseWidth * 0.25);
@@ -604,7 +810,48 @@
     ctx.stroke();
     ctx.restore();
 
+    drawHotspots();
     drawLastTap();
+  }
+
+  function drawHotspots() {
+    if (!hotspotsCache.length) return;
+    const { cx, cy, r } = view;
+    const volcAlpha = clamp(state.volcanic / VOLCANIC_MIN_RELEASE, 0.25, 1);
+    const phase = state.ageTicks * 0.08;
+
+    // Clip to the planet disc — hotspots near the rim have glow radii
+    // larger than the remaining margin, and without a clip the fillRect
+    // would bleed outside the silhouette.
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    for (const h of hotspotsCache) {
+      const px = cx + h.x * r;
+      const py = cy + h.y * r;
+      // Each hotspot pulses at a slightly offset phase so they don't blink
+      // in lockstep — feels alive rather than mechanical.
+      const phaseOffset = h.x * 3.7 + h.y * 5.1;
+      const pulse = 0.65 + 0.35 * Math.sin(phase + phaseOffset);
+      const size = 4 + 4 * pulse;
+
+      // Outer glow — radial gradient so it fades into the crust.
+      const glow = ctx.createRadialGradient(px, py, 0, px, py, size * 3.5);
+      glow.addColorStop(0, `rgba(255, 150, 70, ${0.55 * volcAlpha * pulse})`);
+      glow.addColorStop(0.5, `rgba(255, 100, 40, ${0.25 * volcAlpha * pulse})`);
+      glow.addColorStop(1, 'rgba(255, 100, 40, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(px - size * 3.5, py - size * 3.5, size * 7, size * 7);
+
+      // Core dot — solid and bright enough to tap on.
+      ctx.fillStyle = `rgba(255, 200, 120, ${0.85 * volcAlpha})`;
+      ctx.beginPath();
+      ctx.arc(px, py, size * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   function updateHint() {
@@ -614,16 +861,20 @@
     els.hint.classList.toggle('ready', ready && !urgent);
     els.hint.classList.toggle('urgent', urgent);
 
+    const volcReady = state.volcanic >= VOLCANIC_MIN_RELEASE && hotspotsCache.length > 0 && ready;
+
     if (urgent && ready) {
-      els.hint.textContent = 'pressure cresting — tap now to choose where it goes';
+      els.hint.textContent = 'pressure cresting — choose where to let it go';
     } else if (urgent) {
       const pct = Math.floor((state.influence / RELEASE_COST) * 100);
-      els.hint.textContent = `pressure cresting — influence ${pct}% (eruption imminent)`;
+      els.hint.textContent = `pressure cresting — will ${pct}% (it will erupt without you)`;
+    } else if (volcReady) {
+      els.hint.textContent = 'a hotspot glows — tap to vent and heal the scars around it';
     } else if (ready) {
-      els.hint.textContent = 'tap the planet to release — aim for smooth crust';
+      els.hint.textContent = 'focus the pressure — smooth crust feels steadier';
     } else {
       const pct = Math.floor((state.influence / RELEASE_COST) * 100);
-      els.hint.textContent = `accumulating influence… ${pct}%`;
+      els.hint.textContent = `gathering will… ${pct}%`;
     }
   }
 
@@ -634,11 +885,14 @@
     els.pressureVal.textContent = Math.round(state.pressure);
     els.pressureFill.style.width = `${state.pressure}%`;
 
+    els.volcanicVal.textContent = Math.round(state.volcanic);
+    els.volcanicFill.style.width = `${state.volcanic}%`;
+
     els.influenceVal.textContent = Math.floor(state.influence);
     els.influenceFill.style.width = `${clamp(state.influence, 0, 100)}%`;
 
     els.age.textContent = formatAge(state.ageTicks);
-    els.epoch.textContent = romanEpoch(state.epoch);
+    els.epoch.textContent = `${romanEpoch(state.epoch)} · ${epochInfo(state.epoch).name}`;
     els.faultCount.textContent = state.faults.length;
 
     updateHint();
@@ -671,6 +925,14 @@
     const point = e.changedTouches ? e.changedTouches[0] : e;
     const p = pointFromClient(point.clientX, point.clientY);
     if (!p) return;
+    // If the tap hits a hotspot AND volcanic is charged enough to vent,
+    // route to the volcanic path. Falls through to tectonic otherwise,
+    // so the hotspot overlay doesn't dead-zone half the planet.
+    const hit = findHotspotAt(p.x, p.y);
+    if (hit && state.volcanic >= VOLCANIC_MIN_RELEASE && state.influence >= RELEASE_COST) {
+      performVolcanicRelease({ auto: false, x: hit.x, y: hit.y });
+      return;
+    }
     performRelease({ auto: false, x: p.x, y: p.y });
   }
 
@@ -724,6 +986,7 @@
 
   sizeCanvas();
   bakeTerrain();
+  refreshHotspots(); // restore hotspot positions for any loaded faults
   setInterval(driveLoop, TICK_MS);
   setInterval(persistState, SAVE_INTERVAL_MS);
 

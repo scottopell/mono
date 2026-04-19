@@ -11,26 +11,30 @@
   <main>
     <header>
       <h1>Planet</h1>
-      <p class="tagline">Time always passes. Pressure always releases. You choose <em>when</em> and <em>where</em>, never <em>if</em>.</p>
+      <p class="tagline">You are the planet. Time passes through you. Pressure builds. You choose <em>when</em> and <em>where</em> to let it go — never <em>if</em>.</p>
     </header>
 
-    <section class="stage" role="button" aria-label="Tap the planet to release pressure">
-      <canvas id="planet" aria-label="planet cross-section"></canvas>
+    <section class="stage" role="button" aria-label="Tap to focus the pressure and let it go here">
+      <canvas id="planet" aria-label="your surface, seen from above"></canvas>
     </section>
 
-    <p id="tap-hint" class="tap-hint" aria-live="polite">accumulating influence… 0%</p>
+    <p id="tap-hint" class="tap-hint" aria-live="polite">gathering will… 0%</p>
 
     <section class="hud">
       <div class="gauge">
-        <label>Stability <span class="gauge-desc">— reach 100 to enter next epoch</span><span id="stability-val">50</span></label>
+        <label>Stability <span class="gauge-desc">— how settled you feel. 100 ends the epoch</span><span id="stability-val">50</span></label>
         <div class="bar bar-stability"><div id="stability-fill"></div><div class="goal-mark" title="era threshold"></div></div>
       </div>
       <div class="gauge">
-        <label>Pressure <span class="gauge-desc">— erupts unforced if it hits 100</span><span id="pressure-val">0</span></label>
+        <label>Pressure <span class="gauge-desc">— tectonic stress. erupts on its own at 100</span><span id="pressure-val">0</span></label>
         <div class="bar bar-pressure"><div id="pressure-fill"></div></div>
       </div>
       <div class="gauge">
-        <label>Influence <span class="gauge-desc">— 10 to spend per tap</span><span id="influence-val">0</span></label>
+        <label>Volcanic <span class="gauge-desc">— heat beneath. vents through hotspots in scarred crust</span><span id="volcanic-val">0</span></label>
+        <div class="bar bar-volcanic"><div id="volcanic-fill"></div></div>
+      </div>
+      <div class="gauge">
+        <label>Will <span class="gauge-desc">— your capacity to act. 10 per deliberate release</span><span id="influence-val">0</span></label>
         <div class="bar bar-influence"><div id="influence-fill"></div></div>
       </div>
       <div class="meta">
@@ -55,24 +59,27 @@
         <div class="help-grid">
           <div class="help-row">
             <span class="help-swatch swatch-ridge"></span>
-            <span><strong>Ridge</strong> — a lucky release. Raised into the terrain.</span>
+            <span><strong>Ridge</strong> — a steady release. Lifted into your crust.</span>
           </div>
           <div class="help-row">
             <span class="help-swatch swatch-canyon"></span>
-            <span><strong>Canyon</strong> — an unlucky release. Carved into the terrain.</span>
+            <span><strong>Canyon</strong> — a rough release. Carved into your crust.</span>
           </div>
           <div class="help-row">
             <span class="help-swatch swatch-eruption"></span>
-            <span><strong>Eruption</strong> — pressure hit 100 and released on its own. The red glow marks the site. You don't choose where.</span>
+            <span><strong>Eruption</strong> — pressure reached 100 and let go without you. You don't choose where.</span>
           </div>
           <div class="help-row">
             <span class="help-swatch swatch-scarring"></span>
-            <span><strong>Scarring ring</strong> — yellow/red halo outside the planet. Shows where faults have clustered. Tapping into scarred ground widens the outcome swing and biases it negative.</span>
+            <span><strong>Scarring</strong> — yellow/red halo where your faults cluster. Tectonic releases here widen the swing and bias it rough — but they also fuel volcanic pressure.</span>
+          </div>
+          <div class="help-row">
+            <span class="help-swatch swatch-hotspot"></span>
+            <span><strong>Hotspot</strong> — a pulsing vent inside scarred ground. Tap one (with Volcanic ≥ 30 and Will ≥ 10) to release heat: builds a volcanic ridge AND resurfaces nearby scars. Scarring is damage <em>and</em> fuel.</span>
           </div>
           <p class="help-hint">
-            Low pressure → small, tight outcomes. High pressure → bigger swings, higher ceiling, worse floor.
-            Smooth crust is safe; scarred crust is a gamble.
-            Hit stability 100 to enter the next epoch — your geology carries forward.
+            Two clocks run in parallel. Tectonic Pressure builds fast and creates scars. Volcanic heat builds on those scars and heals them. You balance the two.
+            Reach stability 100 and you pass into the next epoch — your memory carries forward, but the mood shifts: ten eras from Hadean molten youth to Stillness.
           </p>
         </div>
       </details>

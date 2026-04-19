@@ -8,6 +8,7 @@
   --good: #5fae7f;
   --bad: #d9604d;
   --pressure: #c85a3e;
+  --volcanic: #e88a4a;
   --stability: #5b94d4;
   --influence: #c9a85b;
 
@@ -176,6 +177,7 @@ canvas {
 
 .bar-stability > div { background: var(--stability); }
 .bar-pressure > div { background: var(--pressure); }
+.bar-volcanic > div { background: var(--volcanic); }
 .bar-influence > div { background: var(--influence); }
 
 .goal-mark {
@@ -330,6 +332,19 @@ button:disabled {
   font-weight: 600;
 }
 
+#log li .volcanic-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  margin: 0 2px;
+  font-size: 0.72rem;
+  border-radius: 3px;
+  background: rgba(232, 138, 74, 0.18);
+  color: var(--volcanic);
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+}
+
 footer {
   color: var(--muted);
   font-size: 0.88rem;
@@ -408,6 +423,10 @@ footer {
 
 .swatch-scarring {
   background: linear-gradient(90deg, rgba(200,160,40,0.35) 0%, rgba(200,160,40,0.65) 50%, rgba(210,80,60,0.8) 100%);
+}
+
+.swatch-hotspot {
+  background: radial-gradient(circle at 50% 50%, rgba(255,200,120,1) 0%, rgba(255,130,60,0.8) 40%, rgba(140,30,0,0.4) 80%, rgba(140,30,0,0) 100%);
 }
 
 .help-hint {

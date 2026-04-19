@@ -67,11 +67,11 @@ These silently determine what's possible in later epochs.
 | III. Pressure always releases | ✅ | Auto-release fires at `pressure >= 99.99` with biased floor/ceiling. |
 | IV. Probabilistic outcomes | ✅ | `performRelease` rolls in `[floor, ceiling]` — bounds scale with pressure AND local scarring. |
 | V. Complexity is generative | ✅ | `faultDensityAt(x,y)` drives width and mean of the release distribution; virgin crust = tighter/positive, scarred = wider/negative drift. Density is measured at the 2D tap point. Positive releases render as bright ridges, negative as shadowed canyons, so history is legible as geology. Scarring heatmap ring remains for rim-visible activity. |
-| VI. Stability is earned | 🟡 | Stability gate triggers epoch advance and geology carries forward, but epochs are visually indistinguishable. |
+| VI. Stability is earned | ✅ | Stability gate triggers epoch advance and geology carries forward. Each of 10 named epochs (Hadean → Stillness) applies a distinct palette tint at bake time, so the same seeded continents shift mood across the arc: molten red → iron dark → teal oxygenation → aqua bloom → lush green → amber warmth → temperate → smoggy → twilight violet → pale crystalline rest. |
 | Spatial agency | ✅ | Player taps *where* on the planet to release. Each tap is a real decision — location, not just timing. |
-| Core loop (pressure events) | 🟡 | One pressure system (tectonic). River meander / volcanic hotspot not implemented. |
+| Core loop (pressure events) | ✅ | Two interlocking pressure systems. Tectonic pressure builds on a timer and releases via taps (scars the crust). Volcanic pressure builds proportional to total scarring and releases at *hotspots* — clusters of high fault density that glow as tappable vents. Volcanic vents create positive ridges AND resurface nearby scars (severity decays with distance, faults below a threshold prune away). Scarring stops being purely bad: it's fuel for the repair cycle. River meander remains unspecified and unscheduled. |
 | Visual layer choice | ✅ | Top-down procedural terrain: seeded fractal-noise continents/oceans on an offscreen canvas, baked once and blitted per frame, with directional shading + limb darkening. Cross-section / orbital views remain possible future modes but are no longer blocking. |
-| Player identity | ❓ | Currently implicit god-figure (tap to intervene). Open. |
+| Player identity | ✅ | You are the planet. Copy pass reframes every touchpoint in the first person — tagline, gauges (Stability is *your* composure, Will is *your* capacity to act), tap hints ("focus the pressure", "gathering will…"), log entries ("your memory carries forward"). Taps are self-directed releases, not interventions from without. |
 | Law VII | ❓ | Undefined. |
 
 Legend: ✅ complete · 🟡 partial · ❌ not started · ❓ open design question
