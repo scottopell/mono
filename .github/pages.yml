@@ -28,6 +28,10 @@ sites:
     path: planet-game
     description: "Geological idle game — guide a planet through epochs; pressure always releases"
 
+  - name: backgammon
+    path: backgammon
+    description: "Two-phone multiplayer backgammon over WebRTC (or local hotseat)"
+
   # Add more static sites here:
   # - name: another-app
   #   path: another-app
