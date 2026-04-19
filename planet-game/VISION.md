@@ -58,6 +58,16 @@ These silently determine what's possible in later epochs.
 
 ---
 
+## Parked Ideas
+
+Concepts we considered and shelved, so they don't evaporate:
+
+- **Epochal Acts** — a separate gesture/button that spends a large Will reserve (50 or 100) on a planet-scale action distinct from a normal release. Candidates: *Settle* (drop Pressure to 0 without a release and without scarring), *Deepen* (next volcanic vent gets 2× resurface radius), *Stillness* (pause Pressure buildup for ~30s). The appeal is a second verb; the risk is added UI surface and breaking the game's one-verb clarity. Revisit if Will-hoarding feels thin even after charged releases.
+- **Precision buy** — spending more Will on a release tightens variance rather than scaling the mean. "Focus = reliability." Subtler than charged taps but could layer alongside if charge scaling ends up feeling too wild.
+- **River/hydrological axis** — the third pressure system from the original vision. Would add a flow/erosion loop that interacts with both terrain and climate memory. Blocked on defining what a user-visible hydrological event looks like.
+
+---
+
 ## MVP Status — where the code stands against the vision
 
 | Law / System | Status | Notes |

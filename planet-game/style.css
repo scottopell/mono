@@ -345,6 +345,27 @@ button:disabled {
   font-weight: 500;
 }
 
+#log li .tier-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  margin: 0 2px;
+  font-size: 0.72rem;
+  border-radius: 3px;
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+}
+
+#log li .tier-focused {
+  background: rgba(201, 168, 91, 0.2);
+  color: #d9bf7a;
+}
+
+#log li .tier-deep {
+  background: rgba(232, 110, 60, 0.22);
+  color: #f09874;
+}
+
 footer {
   color: var(--muted);
   font-size: 0.88rem;
