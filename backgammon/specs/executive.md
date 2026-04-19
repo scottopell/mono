@@ -66,8 +66,9 @@ perspective argument and draws to Canvas 2D. Connection layer
 | **REQ-BG-010:** Declare a Winner | ✅ Complete | Winner banner + "New Game" button to reset |
 | **REQ-BG-011:** Show Connection Status | ✅ Complete | Indicator shows connected/waiting/reconnecting/lost; guest auto-reconnects the DataConnection with exponential backoff (3 attempts) before declaring the session lost |
 | **REQ-BG-012:** Keep Game State Authoritative and Consistent | ✅ Complete | Host-only mutations; guest mirrors state broadcasts |
+| **REQ-BG-013:** Send a One-Tap Invite Link | ✅ Complete | `?room=CODE` URL auto-joins; share button uses Web Share API on mobile, clipboard fallback elsewhere |
 
-**Progress:** 12 of 12 complete
+**Progress:** 13 of 13 complete
 
 **Known gaps:**
 

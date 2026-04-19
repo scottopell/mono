@@ -29,6 +29,8 @@
     joinCode: document.getElementById('join-code'),
     lobbyError: document.getElementById('lobby-error'),
     roomCodeDisplay: document.getElementById('room-code-display'),
+    btnShare: document.getElementById('btn-share'),
+    shareLinkHint: document.getElementById('share-link-hint'),
     btnCancelHost: document.getElementById('btn-cancel-host'),
     canvas: document.getElementById('board'),
     youLabel: document.getElementById('you-label'),
@@ -78,6 +80,7 @@
         setStatus(s);
         if (s === 'waiting') {
           el.roomCodeDisplay.textContent = app.peerApi.code;
+          setupShareUI(app.peerApi.code);
           showScreen('waiting');
         }
       },
@@ -105,6 +108,52 @@
     app.role = null;
     setStatus('idle');
     showScreen('lobby');
+  });
+
+  // --- Share invite (REQ-BG-013) ---
+
+  function buildInviteURL(code) {
+    const url = new URL(window.location.href);
+    url.search = '?room=' + code;
+    url.hash = '';
+    return url.toString();
+  }
+
+  function setupShareUI(code) {
+    const url = buildInviteURL(code);
+    el.btnShare.dataset.url = url;
+    el.btnShare.classList.remove('hidden');
+    // navigator.share opens the native share sheet on iOS/Android (iMessage,
+    // WhatsApp, etc.) — much nicer than copying. Fall back to clipboard.
+    if (navigator.share) {
+      el.btnShare.textContent = 'Share invite link';
+      el.shareLinkHint.classList.add('hidden');
+    } else {
+      el.btnShare.textContent = 'Copy invite link';
+      el.shareLinkHint.textContent = url;
+      el.shareLinkHint.classList.remove('hidden');
+    }
+  }
+
+  el.btnShare.addEventListener('click', async () => {
+    const url = el.btnShare.dataset.url;
+    if (!url) return;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Backgammon', text: 'Join my game', url });
+      } catch (_) {
+        // User cancelled; nothing to do.
+      }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      const orig = el.btnShare.textContent;
+      el.btnShare.textContent = 'Copied!';
+      setTimeout(() => { el.btnShare.textContent = orig; }, 1500);
+    } catch (_) {
+      // Clipboard API unavailable; the link is already shown below the button.
+    }
   });
 
   // --- Lobby: local hotseat (solo playtest, no peer) ---
@@ -429,6 +478,15 @@
 
   setStatus('idle');
   showScreen('lobby');
+
+  // Auto-join from ?room=CODE (REQ-BG-013). Strip the param afterward so a
+  // reload doesn't loop back into a join attempt against a now-stale room.
+  (function tryAutoJoin() {
+    const code = peer.normalizeCode(new URLSearchParams(window.location.search).get('room') || '');
+    if (code.length < 4) return;
+    history.replaceState({}, '', window.location.pathname);
+    startGuest(code);
+  })();
 
   // Dev affordance: expose state for devtools inspection.
   // Not used by the app itself; safe to leave in production.

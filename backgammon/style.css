@@ -194,6 +194,17 @@ html, body {
   margin: 0;
 }
 
+.share-link-hint {
+  color: var(--ink-dim);
+  font-size: 0.8rem;
+  margin: 0;
+  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  word-break: break-all;
+  max-width: 100%;
+  text-align: center;
+  padding: 0 0.5rem;
+}
+
 /* --- Game --- */
 
 #screen-game {

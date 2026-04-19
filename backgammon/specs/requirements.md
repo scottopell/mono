@@ -210,3 +210,20 @@ checker" would ruin the shared-board illusion. A single authoritative state
 on the host eliminates that class of bug entirely.
 
 ---
+
+### REQ-BG-013: Send a One-Tap Invite Link
+
+WHEN a user creates a new room
+THE SYSTEM SHALL provide a shareable link, surfaced via the device's native
+share sheet when available and via clipboard copy otherwise
+
+WHEN a user opens the app via a link that contains a room code
+THE SYSTEM SHALL automatically attempt to join that room rather than showing
+the lobby
+
+**Rationale:** Reading a code aloud or asking the other person to type it
+adds friction to the moment when someone says "want to play?" Sending a
+link in any messaging app is one tap to send and one tap to join — the
+same flow people already use to share YouTube videos or photos.
+
+---
