@@ -72,7 +72,9 @@ header h1 {
   max-width: 560px;
   width: 100%;
   margin: 0 auto;
-  touch-action: manipulation;
+  /* `none` (not `manipulation`) so press-and-hold charge taps aren't
+     cancelled by the browser's default scroll/zoom gesture on iOS. */
+  touch-action: none;
   user-select: none;
   -webkit-user-select: none;
   cursor: pointer;

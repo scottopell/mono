@@ -854,6 +854,26 @@
     const twoPi = Math.PI * 2;
     const start = -Math.PI / 2; // 12 o'clock
 
+    // Not enough Will for even Normal — show a brief text cue at the tap
+    // point and bail. No ring (a ring would misleadingly suggest the
+    // hold is doing something).
+    if (!tier) {
+      const need = CHARGE_TIERS[0].will;
+      const fontSize = Math.max(12, Math.round(r * 0.065));
+      ctx.save();
+      ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+      for (const [ox, oy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+        ctx.fillText(`need ${need} will`, px + ox, py + oy);
+      }
+      ctx.fillStyle = 'rgba(240, 180, 170, 0.95)';
+      ctx.fillText(`need ${need} will`, px, py);
+      ctx.restore();
+      return;
+    }
+
     ctx.save();
 
     // Unfilled track — subtle dark halo so the fill has contrast.
@@ -1034,16 +1054,19 @@
 
   function tierFromHold(heldMs) {
     // Walk the tier table from highest to lowest and pick the first one
-    // whose threshold we've crossed AND the player can afford. Falls back
-    // to Normal if nothing else qualifies (and that's still affordable).
+    // whose threshold we've crossed AND the player can afford. Returns
+    // null if the player cannot afford any tier (including Normal), so
+    // the caller can suppress the release and surface a clear "need N"
+    // cue instead of silently no-opping inside performRelease.
     for (let i = CHARGE_TIERS.length - 1; i >= 0; i--) {
       const t = CHARGE_TIERS[i];
       if (heldMs >= t.holdMs && state.influence >= t.will) return t;
     }
-    return CHARGE_TIERS[0];
+    return null;
   }
 
   function resolveTap(px, py, tier) {
+    if (!tier) return null;
     // If the tap lands on a hotspot AND volcanic is charged, route volcanic.
     // Falls through to tectonic otherwise so the hotspot overlay doesn't
     // dead-zone half the planet.
@@ -1056,6 +1079,10 @@
 
   function onPointerDown(e) {
     if (e.button !== undefined && e.button !== 0) return; // left/primary only
+    // Ignore additional pointerdowns while a charge is already in flight,
+    // otherwise multi-touch (or an accidental double-press) would orphan
+    // the first pointer's capture and leave activeCharge in a bad state.
+    if (activeCharge) return;
     const p = pointFromClient(e.clientX, e.clientY);
     if (!p) return;
     // setPointerCapture so pointerup always lands on this element even if

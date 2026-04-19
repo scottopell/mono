@@ -36,6 +36,10 @@
   // pointerdown/pointerup (to measure hold duration for charge tiers),
   // but we also fire `click` so legacy listeners keep working identically
   // to a user gesture.
+  //
+  // holdMs === 0 fires synchronously so callers that relied on an
+  // immediate assertion after a tap don't have to await. Non-zero holds
+  // return a Promise that resolves after the release is dispatched.
   function dispatchTap(target, clientX, clientY, holdMs = 0) {
     const base = {
       bubbles: true, cancelable: true, composed: true,
@@ -43,13 +47,17 @@
       button: 0, buttons: 1,
       pointerId: 1, pointerType: 'touch', isPrimary: true,
     };
+    const fireUp = () => {
+      target.dispatchEvent(new PointerEvent('pointerup', { ...base, pressure: 0 }));
+      target.dispatchEvent(new MouseEvent('click', base));
+    };
     target.dispatchEvent(new PointerEvent('pointerdown', { ...base, pressure: 0.5 }));
+    if (holdMs <= 0) {
+      fireUp();
+      return Promise.resolve();
+    }
     return new Promise(resolve => {
-      setTimeout(() => {
-        target.dispatchEvent(new PointerEvent('pointerup', { ...base, pressure: 0 }));
-        target.dispatchEvent(new MouseEvent('click', base));
-        resolve();
-      }, holdMs);
+      setTimeout(() => { fireUp(); resolve(); }, holdMs);
     });
   }
 
