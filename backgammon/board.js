@@ -32,15 +32,10 @@
     const padX = 6;
     const padY = 6;
 
-    // Enforce a reasonable aspect ratio (wider than tall). Center within canvas.
-    const targetAspect = 1.5;
+    // Canvas is already sized to roughly the right aspect (resizeCanvas);
+    // use nearly all of it, leaving only the small padding.
     let boardW = canvasW - 2 * padX;
     let boardH = canvasH - 2 * padY;
-    if (boardW / boardH > targetAspect) {
-      boardW = boardH * targetAspect;
-    } else {
-      boardH = boardW / targetAspect;
-    }
     const originX = (canvasW - boardW) / 2;
     const originY = (canvasH - boardH) / 2;
 
@@ -361,15 +356,30 @@
     ctx.fill();
   }
 
-  // Resize canvas to its CSS rect, with devicePixelRatio scaling.
+  // Size the canvas to fit its wrap while maintaining a 3:2 aspect ratio.
+  // Sets both CSS size and buffer size (DPR-scaled).
   function resizeCanvas(canvas) {
     const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = Math.max(1, Math.floor(rect.width * dpr));
-    canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+    const wrap = canvas.parentElement;
+    const wrapRect = wrap.getBoundingClientRect();
+    // Narrower aspect on tall portrait viewports so the board fills more of
+    // the available space; wider aspect on landscape/desktop for the
+    // traditional look.
+    const isPortrait = wrapRect.height > wrapRect.width;
+    const targetAspect = isPortrait ? 1.25 : 1.6;
+    let cssW = wrapRect.width;
+    let cssH = cssW / targetAspect;
+    if (cssH > wrapRect.height) {
+      cssH = wrapRect.height;
+      cssW = cssH * targetAspect;
+    }
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    canvas.width = Math.max(1, Math.floor(cssW * dpr));
+    canvas.height = Math.max(1, Math.floor(cssH * dpr));
     const ctx = canvas.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    return { ctx, w: rect.width, h: rect.height };
+    return { ctx, w: cssW, h: cssH };
   }
 
   window.BackgammonBoard = {

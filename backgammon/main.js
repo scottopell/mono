@@ -181,6 +181,10 @@
     if (broadcast && app.role === 'host' && app.peerApi) {
       app.peerApi.send({ type: 'state', state: serializeState(s) });
     }
+    // Mirror state to DOM for external debuggers that run in isolated worlds.
+    document.body.dataset.bgState = JSON.stringify(serializeState(s));
+    document.body.dataset.bgPerspective = app.perspective;
+    document.body.dataset.bgSelected = app.selected === null ? '' : String(app.selected);
     renderUi();
     render();
   }
@@ -245,6 +249,7 @@
     if (!app.state || !el.canvas || el.screenGame.classList.contains('hidden')) return;
     const { ctx } = board.resizeCanvas(el.canvas);
     board.renderBoard(ctx, app.state, app.perspective, { selected: app.selected });
+    document.body.dataset.bgSelected = app.selected === null ? '' : String(app.selected);
   }
 
   function renderUi() {
@@ -426,4 +431,49 @@
 
   setStatus('idle');
   showScreen('lobby');
+
+  // Dev affordance: expose state for devtools inspection.
+  // Not used by the app itself; safe to leave in production.
+  window.__bg = app;
+  window.__bgSetState = (s) => setState(s, { broadcast: false });
+
+  // Test helper: compute page coords for a board location ('bar', 'off',
+  // or a board index 0..23) from the active perspective. Returns {x, y}
+  // for the external test driver to click with real input events.
+  window.__bgCoords = function (where) {
+    const canvas = el.canvas;
+    const r = canvas.getBoundingClientRect();
+    const padX = 6, padY = 6;
+    const boardW = r.width - 2 * padX;
+    const boardH = r.height - 2 * padY;
+    const frame = Math.max(6, Math.min(boardW, boardH) * 0.025);
+    const barW = boardW * 0.07;
+    const trayW = boardW * 0.08;
+    const innerW = boardW - 2 * frame;
+    const innerH = boardH - 2 * frame;
+    const pointW = (innerW - barW - trayW) / 12;
+    const pointH = innerH * 0.44;
+    const left = padX + frame;
+    const top = padY + frame;
+    let x, y;
+    if (where === 'bar') {
+      x = left + pointW * 6 + barW / 2;
+      y = top + innerH / 2;
+    } else if (where === 'off') {
+      x = left + pointW * 12 + barW + trayW / 2;
+      y = top + innerH / 2;
+    } else {
+      const idx = Number(where);
+      const persp = app.perspective;
+      const slot = persp === 'p1'
+        ? (idx >= 12 ? { row: 'top', col: idx - 12 } : { row: 'bottom', col: 11 - idx })
+        : (idx >= 12 ? { row: 'bottom', col: 23 - idx } : { row: 'top', col: idx });
+      const colOffset = slot.col < 6
+        ? left + pointW * (slot.col + 0.5)
+        : left + pointW * 6 + barW + pointW * (slot.col - 6 + 0.5);
+      x = colOffset;
+      y = slot.row === 'top' ? top + pointH / 2 : top + innerH - pointH / 2;
+    }
+    return { x: r.left + x, y: r.top + y };
+  };
 })();
