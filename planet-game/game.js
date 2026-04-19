@@ -141,7 +141,7 @@
     state.volcanic   = Math.max(0, Math.min(100, Number(saved.volcanic) || 0));
     state.influence  = Math.max(0, Number(saved.influence) || 0);
     state.stability  = Math.max(0, Math.min(100, Number(saved.stability) || 50));
-    state.epoch      = Math.max(1, saved.epoch | 0);
+    state.epoch      = clamp(saved.epoch | 0, 1, MAX_EPOCH);
     state.faults     = Array.isArray(saved.faults) ? saved.faults : [];
     state.log        = Array.isArray(saved.log) ? saved.log : [];
   }
@@ -820,6 +820,14 @@
     const volcAlpha = clamp(state.volcanic / VOLCANIC_MIN_RELEASE, 0.25, 1);
     const phase = state.ageTicks * 0.08;
 
+    // Clip to the planet disc — hotspots near the rim have glow radii
+    // larger than the remaining margin, and without a clip the fillRect
+    // would bleed outside the silhouette.
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+
     for (const h of hotspotsCache) {
       const px = cx + h.x * r;
       const py = cy + h.y * r;
@@ -843,6 +851,7 @@
       ctx.arc(px, py, size * 0.55, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.restore();
   }
 
   function updateHint() {
