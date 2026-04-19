@@ -354,7 +354,14 @@
       scarring,
     });
 
-    state.lastTap = { x: px, y: py, density, bornAt: state.ageTicks };
+    // Feedback marker — the ring AND the floating delta number. Players
+    // need to see cause/effect at the moment of release: the planet
+    // responded *here*, with *this much* stability change.
+    state.lastTap = {
+      x: px, y: py, density,
+      delta, auto,
+      bornAt: state.ageTicks,
+    };
 
     if (state.stability >= STABILITY_GOAL && state.epoch < 10) {
       state.epoch += 1;
@@ -402,9 +409,10 @@
       }
       const sign = e.delta >= 0 ? '+' : '';
       const cls = e.delta >= 0 ? 'good' : 'bad';
-      const tag = e.auto ? ' <em>(unforced)</em>' : '';
+      const label = e.auto ? 'Eruption' : 'Release';
+      const eruptionTag = e.auto ? ' <span class="eruption-tag">red</span>' : '';
       const zone = e.scarring != null ? ` <span class="zone">${zoneLabel(e.scarring)}</span>` : '';
-      return `<li><span class="age">${formatAge(e.ageTicks)}</span>Release at P${e.P}${zone} → stability <span class="${cls}">${sign}${e.delta.toFixed(1)}</span>${tag}</li>`;
+      return `<li><span class="age">${formatAge(e.ageTicks)}</span>${label} at P${e.P}${zone} → stability <span class="${cls}">${sign}${e.delta.toFixed(1)}</span>${eruptionTag}</li>`;
     }).join('');
     if (els.logCount) els.logCount.textContent = state.log.length ? String(state.log.length) : '';
   }
@@ -436,17 +444,52 @@
     if (!state.lastTap) return;
     const { cx, cy, r } = view;
     const age = state.ageTicks - state.lastTap.bornAt;
-    const life = Math.max(0, 1 - age / 18);
+    const LIFETIME = 28;               // ticks (~2.8s at 100ms/tick)
+    const life = Math.max(0, 1 - age / LIFETIME);
     if (life <= 0) { state.lastTap = null; return; }
 
     const px = cx + state.lastTap.x * r;
     const py = cy + state.lastTap.y * r;
+    const { delta, auto } = state.lastTap;
+
     ctx.save();
-    ctx.strokeStyle = `rgba(240, 220, 180, ${0.8 * life})`;
+
+    // Expanding ring — red for eruptions, warm tan for voluntary releases.
+    const ringColor = auto ? `rgba(230, 95, 70, ${0.75 * life})`
+                           : `rgba(240, 220, 180, ${0.8 * life})`;
+    ctx.strokeStyle = ringColor;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(px, py, 6 + (1 - life) * 16, 0, Math.PI * 2);
+    ctx.arc(px, py, 6 + (1 - life) * 18, 0, Math.PI * 2);
     ctx.stroke();
+
+    // Floating delta number — drifts upward and fades. Green = positive,
+    // red = negative. This is the single most important bit of feedback
+    // in the whole game: did my tap help or hurt?
+    if (typeof delta === 'number') {
+      const rise = (1 - life) * 32;
+      const fontSize = Math.max(22, Math.round(r * 0.14));
+      const sign = delta >= 0 ? '+' : '';
+      const txt = `${sign}${delta.toFixed(1)}`;
+      const good = delta >= 0;
+      // Ease the fade so the number stays readable for most of its life.
+      const textAlpha = Math.min(1, life * 1.6);
+      const tx = px;
+      const ty = py - 18 - rise;
+      ctx.font = `700 ${fontSize}px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      // Black outline via 4-directional offset — legible on any terrain tone.
+      ctx.fillStyle = `rgba(0, 0, 0, ${0.75 * textAlpha})`;
+      for (const [ox, oy] of [[-2,0],[2,0],[0,-2],[0,2],[1,1],[-1,-1]]) {
+        ctx.fillText(txt, tx + ox, ty + oy);
+      }
+      ctx.fillStyle = good
+        ? `rgba(140, 230, 160, ${textAlpha})`
+        : `rgba(240, 115, 105, ${textAlpha})`;
+      ctx.fillText(txt, tx, ty);
+    }
+
     ctx.restore();
   }
 
@@ -567,13 +610,20 @@
   function updateHint() {
     if (!els.hint) return;
     const ready = state.influence >= RELEASE_COST;
-    if (ready) {
-      els.hint.textContent = `tap the planet to release — aim for virgin crust`;
-      els.hint.classList.add('ready');
+    const urgent = state.pressure >= 85;
+    els.hint.classList.toggle('ready', ready && !urgent);
+    els.hint.classList.toggle('urgent', urgent);
+
+    if (urgent && ready) {
+      els.hint.textContent = 'pressure cresting — tap now to choose where it goes';
+    } else if (urgent) {
+      const pct = Math.floor((state.influence / RELEASE_COST) * 100);
+      els.hint.textContent = `pressure cresting — influence ${pct}% (eruption imminent)`;
+    } else if (ready) {
+      els.hint.textContent = 'tap the planet to release — aim for smooth crust';
     } else {
       const pct = Math.floor((state.influence / RELEASE_COST) * 100);
       els.hint.textContent = `accumulating influence… ${pct}%`;
-      els.hint.classList.remove('ready');
     }
   }
 
