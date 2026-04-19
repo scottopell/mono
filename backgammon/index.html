@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#1a140c">
+  <title>Backgammon</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="status-dot" class="status-dot status-idle" title="connection status" aria-live="polite"></div>
+
+  <main id="app">
+    <!-- LOBBY -->
+    <section id="screen-lobby" class="screen" aria-label="lobby">
+      <h1 class="app-title">Backgammon</h1>
+      <p class="app-subtitle">two phones, one game</p>
+
+      <div class="lobby-actions">
+        <button id="btn-new-game" class="btn btn-primary">New Game</button>
+
+        <div class="divider"><span>or</span></div>
+
+        <form id="join-form" class="join-form" autocomplete="off">
+          <label for="join-code" class="join-label">Enter a room code</label>
+          <input
+            id="join-code"
+            name="join-code"
+            type="text"
+            inputmode="latin"
+            autocapitalize="characters"
+            maxlength="6"
+            spellcheck="false"
+            placeholder="ABCDEF">
+          <button type="submit" class="btn">Join</button>
+        </form>
+      </div>
+
+      <p id="lobby-error" class="error-msg" role="alert"></p>
+    </section>
+
+    <!-- WAITING ROOM (host only) -->
+    <section id="screen-waiting" class="screen hidden" aria-label="waiting for opponent">
+      <h2>Share this code</h2>
+      <div class="room-code-display" id="room-code-display">------</div>
+      <p class="waiting-hint">Waiting for opponent to join…</p>
+      <button id="btn-cancel-host" class="btn btn-ghost">Cancel</button>
+    </section>
+
+    <!-- GAME -->
+    <section id="screen-game" class="screen hidden" aria-label="game board">
+      <header class="game-header">
+        <div class="player-label" id="you-label">You — p1</div>
+        <div class="turn-indicator" id="turn-indicator">Your turn</div>
+      </header>
+
+      <div class="board-wrap">
+        <canvas id="board" aria-label="backgammon board"></canvas>
+      </div>
+
+      <section class="hud">
+        <div class="dice-row" id="dice-row" aria-live="polite"></div>
+        <div class="actions">
+          <button id="btn-roll" class="btn btn-primary hidden">Roll dice</button>
+          <button id="btn-pass" class="btn hidden">Pass (no legal moves)</button>
+          <button id="btn-new" class="btn btn-primary hidden">New Game</button>
+        </div>
+        <p id="message" class="message" aria-live="polite"></p>
+      </section>
+    </section>
+  </main>
+
+  <!-- PeerJS CDN -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+
+  <!-- TURN config — optional; file is gitignored in practice -->
+  <script src="config.js" onerror="console.warn('config.js not present; STUN-only mode')"></script>
+
+  <script src="rules.js"></script>
+  <script src="board.js"></script>
+  <script src="peer.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
