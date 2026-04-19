@@ -43,6 +43,30 @@
   const NOISE_SCALE = 3.2;           // continents per planet width
   const NOISE_OCTAVES = 4;
 
+  // Law VI — each epoch has a name and a palette shift applied at bake time.
+  // Same seed, same continents, different mood: Hadean is red and molten,
+  // Cambrian is cool and aqueous, Stillness is pale and crystalline. The
+  // arc is 10 beats — molten youth → crystalline rest.
+  //
+  // tint = [rMul, gMul, bMul, whiteBlend]:
+  //   - rMul/gMul/bMul are multiplied into the shaded base RGB
+  //   - whiteBlend in [0,1] lifts the result toward white at the end
+  //     (pure multiplication can't brighten dark oceans toward "pale")
+  const EPOCHS = [
+    { name: 'Hadean',        tint: [1.55, 0.55, 0.42, 0.00] },
+    { name: 'Archean',       tint: [0.75, 0.90, 0.70, 0.00] },
+    { name: 'Proterozoic',   tint: [0.72, 1.05, 1.25, 0.00] },
+    { name: 'Cambrian',      tint: [0.60, 1.05, 1.35, 0.05] },
+    { name: 'Carboniferous', tint: [0.60, 1.35, 0.75, 0.00] },
+    { name: 'Mesozoic',      tint: [1.35, 1.05, 0.55, 0.08] },
+    { name: 'Cenozoic',      tint: [0.92, 1.10, 1.00, 0.05] },
+    { name: 'Anthropocene',  tint: [1.20, 0.92, 0.75, 0.10] },
+    { name: 'Twilight',      tint: [0.85, 0.72, 1.18, 0.00] },
+    { name: 'Stillness',     tint: [1.15, 1.15, 1.30, 0.45] },
+  ];
+  const MAX_EPOCH = EPOCHS.length;
+  const epochInfo = (n) => EPOCHS[clamp(n, 1, MAX_EPOCH) - 1];
+
   // Persistence (Law II): save everything that would hurt to lose across a
   // page reload. Ephemeral UI (paused, lastTap) is intentionally excluded.
   const SAVE_KEY = 'planet-game:save';
@@ -239,6 +263,9 @@
     const data = img.data;
     const seed = state.planetSeed;
     const half = TERRAIN_RES / 2;
+    // Law VI — epoch tint recolors the same seeded terrain. Continents stay
+    // put; the mood shifts.
+    const [tr, tg, tb, tw] = epochInfo(state.epoch).tint;
 
     for (let py = 0; py < TERRAIN_RES; py++) {
       for (let px = 0; px < TERRAIN_RES; px++) {
@@ -262,9 +289,11 @@
 
         const [r, g, b] = heightToColor(h);
         const k = shade * limb;
-        data[idx]     = Math.min(255, r * k);
-        data[idx + 1] = Math.min(255, g * k);
-        data[idx + 2] = Math.min(255, b * k);
+        const rr = r * k * tr, gg = g * k * tg, bb = b * k * tb;
+        const inv = 1 - tw;
+        data[idx]     = Math.min(255, rr * inv + 255 * tw);
+        data[idx + 1] = Math.min(255, gg * inv + 255 * tw);
+        data[idx + 2] = Math.min(255, bb * inv + 255 * tw);
         data[idx + 3] = 255;
       }
     }
@@ -363,9 +392,10 @@
       bornAt: state.ageTicks,
     };
 
-    if (state.stability >= STABILITY_GOAL && state.epoch < 10) {
+    if (state.stability >= STABILITY_GOAL && state.epoch < MAX_EPOCH) {
       state.epoch += 1;
       state.stability = 55;
+      bakeTerrain(); // Law VI: epoch tint shifts, same continents
       pushLog({
         ageTicks: state.ageTicks,
         epochEnter: state.epoch,
@@ -405,12 +435,13 @@
   function renderLog() {
     els.log.innerHTML = state.log.map((e) => {
       if (e.epochEnter) {
-        return `<li><span class="age">${formatAge(e.ageTicks)}</span>— Epoch <strong>${romanEpoch(e.epochEnter)}</strong> begins. Geology carries forward.</li>`;
+        const name = epochInfo(e.epochEnter).name;
+        return `<li><span class="age">${formatAge(e.ageTicks)}</span>— The <strong>${name}</strong> begins. Your memory carries forward.</li>`;
       }
       const sign = e.delta >= 0 ? '+' : '';
       const cls = e.delta >= 0 ? 'good' : 'bad';
-      const label = e.auto ? 'Eruption' : 'Release';
-      const eruptionTag = e.auto ? ' <span class="eruption-tag">red</span>' : '';
+      const label = e.auto ? 'Erupted' : 'Released';
+      const eruptionTag = e.auto ? ' <span class="eruption-tag">unforced</span>' : '';
       const zone = e.scarring != null ? ` <span class="zone">${zoneLabel(e.scarring)}</span>` : '';
       return `<li><span class="age">${formatAge(e.ageTicks)}</span>${label} at P${e.P}${zone} → stability <span class="${cls}">${sign}${e.delta.toFixed(1)}</span>${eruptionTag}</li>`;
     }).join('');
@@ -615,15 +646,15 @@
     els.hint.classList.toggle('urgent', urgent);
 
     if (urgent && ready) {
-      els.hint.textContent = 'pressure cresting — tap now to choose where it goes';
+      els.hint.textContent = 'pressure cresting — choose where to let it go';
     } else if (urgent) {
       const pct = Math.floor((state.influence / RELEASE_COST) * 100);
-      els.hint.textContent = `pressure cresting — influence ${pct}% (eruption imminent)`;
+      els.hint.textContent = `pressure cresting — will ${pct}% (it will erupt without you)`;
     } else if (ready) {
-      els.hint.textContent = 'tap the planet to release — aim for smooth crust';
+      els.hint.textContent = 'focus the pressure — smooth crust feels steadier';
     } else {
       const pct = Math.floor((state.influence / RELEASE_COST) * 100);
-      els.hint.textContent = `accumulating influence… ${pct}%`;
+      els.hint.textContent = `gathering will… ${pct}%`;
     }
   }
 
@@ -638,7 +669,7 @@
     els.influenceFill.style.width = `${clamp(state.influence, 0, 100)}%`;
 
     els.age.textContent = formatAge(state.ageTicks);
-    els.epoch.textContent = romanEpoch(state.epoch);
+    els.epoch.textContent = `${romanEpoch(state.epoch)} · ${epochInfo(state.epoch).name}`;
     els.faultCount.textContent = state.faults.length;
 
     updateHint();
