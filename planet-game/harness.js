@@ -115,10 +115,13 @@
   }
 
   function getLog() {
+    // textContent (not innerText) so collapsed <details> still surfaces the
+    // log text; innerText returns "" when the ancestor is display:none.
     return Array.from(document.querySelectorAll('#log li')).map(li => ({
-      text: li.innerText.trim(),
+      text: (li.textContent || '').replace(/\s+/g, ' ').trim(),
       positive: !!li.querySelector('.good'),
       negative: !!li.querySelector('.bad'),
+      eruption: !!li.querySelector('.eruption-tag'),
     }));
   }
 
