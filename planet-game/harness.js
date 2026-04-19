@@ -104,6 +104,7 @@
     return {
       stability:  numOf('stability-val'),
       pressure:   numOf('pressure-val'),
+      volcanic:   numOf('volcanic-val'),
       influence:  numOf('influence-val'),
       age:        $('age')?.textContent ?? null,
       epoch:      $('epoch')?.textContent ?? null,
@@ -122,6 +123,7 @@
       positive: !!li.querySelector('.good'),
       negative: !!li.querySelector('.bad'),
       eruption: !!li.querySelector('.eruption-tag'),
+      volcanic: !!li.querySelector('.volcanic-tag'),
     }));
   }
 
