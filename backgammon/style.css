@@ -154,6 +154,16 @@ html, body {
   text-align: center;
 }
 
+.deploy-info {
+  margin-top: 2rem;
+  color: var(--ink-dim);
+  opacity: 0.4;
+  font-size: 0.7rem;
+  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  text-align: center;
+  letter-spacing: 0.05em;
+}
+
 /* --- Waiting room --- */
 
 #screen-waiting {

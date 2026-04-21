@@ -132,14 +132,15 @@
 
   // Given a canvas size and a role, build a transform from world coords
   // (x in 0..W, y in 0..H) to canvas coords. Each phone sees its own half
-  // stretched to fill the canvas.
+  // stretched to fill the canvas; the 'local' hotseat role sees the whole
+  // board (both halves) and is intended for single-device playtesting.
   function viewportFor(canvasW, canvasH, role) {
-    // Source rect in world:
-    const srcY = role === 'top' ? 0 : SEAM_Y;
-    const srcH = WORLD_H / 2;
+    let srcY, srcH;
+    if (role === 'local') { srcY = 0; srcH = WORLD_H; }
+    else if (role === 'top') { srcY = 0; srcH = WORLD_H / 2; }
+    else { srcY = SEAM_Y; srcH = WORLD_H / 2; }
     const srcX = 0;
     const srcW = WORLD_W;
-    // Fit srcW × srcH into canvasW × canvasH preserving aspect.
     const sx = canvasW / srcW;
     const sy = canvasH / srcH;
     const s = Math.min(sx, sy);
@@ -194,41 +195,49 @@
     ctx.rect(vp.srcX, vp.srcY, vp.srcW, vp.srcH);
     ctx.clip();
 
+    // 'local' shows both halves; remote roles each show exactly one.
+    const showsBottom = role === 'local' || role === 'bottom';
+    const showsTop    = role === 'local' || role === 'top';
+
     // Frame + felt
     ctx.fillStyle = COLORS.frame;
     ctx.fillRect(0, vp.srcY, WORLD_W, vp.srcH);
     ctx.fillStyle = COLORS.felt;
-    if (role === 'bottom') {
-      ctx.fillRect(INNER_L, SEAM_Y, INNER_R - INNER_L, WORLD_H / 2 - FRAME);
-    } else {
-      ctx.fillRect(INNER_L, FRAME, INNER_R - INNER_L, WORLD_H / 2 - FRAME);
-    }
+    if (showsBottom) ctx.fillRect(INNER_L, SEAM_Y, INNER_R - INNER_L, WORLD_H / 2 - FRAME);
+    if (showsTop)    ctx.fillRect(INNER_L, FRAME,  INNER_R - INNER_L, WORLD_H / 2 - FRAME);
 
-    // Trays on left + right (outer)
+    // Trays on left + right (outer) — one strip per half
     ctx.fillStyle = COLORS.trayBg;
-    const trayY = role === 'top' ? FRAME : SEAM_Y;
     const trayH = WORLD_H / 2 - FRAME;
-    ctx.fillRect(FRAME, trayY, TRAY_W, trayH);
-    ctx.fillRect(WORLD_W - FRAME - TRAY_W, trayY, TRAY_W, trayH);
+    if (showsBottom) {
+      ctx.fillRect(FRAME, SEAM_Y, TRAY_W, trayH);
+      ctx.fillRect(WORLD_W - FRAME - TRAY_W, SEAM_Y, TRAY_W, trayH);
+    }
+    if (showsTop) {
+      ctx.fillRect(FRAME, FRAME, TRAY_W, trayH);
+      ctx.fillRect(WORLD_W - FRAME - TRAY_W, FRAME, TRAY_W, trayH);
+    }
 
     // Bar
     ctx.fillStyle = COLORS.bar;
-    ctx.fillRect(BAR_L, trayY, BAR_W, trayH);
+    if (showsBottom) ctx.fillRect(BAR_L, SEAM_Y, BAR_W, trayH);
+    if (showsTop)    ctx.fillRect(BAR_L, FRAME,  BAR_W, trayH);
 
-    // Points in this half
-    const halfRange = role === 'bottom' ? [0, 11] : [12, 23];
-    for (let i = halfRange[0]; i <= halfRange[1]; i++) {
-      drawPoint(ctx, i);
-    }
+    // Points
+    const firstIdx = showsBottom ? 0  : 12;
+    const lastIdx  = showsTop    ? 23 : 11;
+    for (let i = firstIdx; i <= lastIdx; i++) drawPoint(ctx, i);
 
-    // Bear-off strip for the active player, if legal and in this half.
+    // Bear-off strip for the active player, if legal and visible.
     const activePlayer = state.turn;
     if (
       state.phase === 'move' && activePlayer &&
       window.BackgammonRules.canBearOff(state, activePlayer)
     ) {
       const stripHalf = activePlayer === 'p1' ? 'bottom' : 'top';
-      if (stripHalf === role) {
+      const stripVisible = (stripHalf === 'bottom' && showsBottom) ||
+                           (stripHalf === 'top' && showsTop);
+      if (stripVisible) {
         const r = bearOffRect(activePlayer);
         const active = uiState && uiState.highlights &&
           uiState.highlights.hasBearOff;
@@ -252,7 +261,7 @@
     }
 
     // Checkers
-    for (let i = halfRange[0]; i <= halfRange[1]; i++) {
+    for (let i = firstIdx; i <= lastIdx; i++) {
       const count = Math.abs(state.board[i]);
       if (count === 0) continue;
       const owner = state.board[i] > 0 ? 'p1' : 'p2';
@@ -307,7 +316,7 @@
 
   function drawBarStack(ctx, owner, count, role) {
     if (count === 0) return;
-    const isOnThisHalf =
+    const isOnThisHalf = role === 'local' ||
       (owner === 'p1' && role === 'bottom') ||
       (owner === 'p2' && role === 'top');
     if (!isOnThisHalf) return;
@@ -330,7 +339,7 @@
 
   function drawBornOffStack(ctx, owner, count, role) {
     if (count === 0) return;
-    const isOnThisHalf =
+    const isOnThisHalf = role === 'local' ||
       (owner === 'p1' && role === 'bottom') ||
       (owner === 'p2' && role === 'top');
     if (!isOnThisHalf) return;
@@ -454,7 +463,7 @@
   function drawDice(ctx, state, role, selectedDieIdx) {
     const player = state.turn;
     const quadHalf = player === 'p1' ? 'bottom' : 'top';
-    if (quadHalf !== role) return; // dice are only in one half
+    if (role !== 'local' && quadHalf !== role) return;
     const positions = dicePositions(state);
     // Track which positions are "used" — a die value that's not in
     // diceRemaining is used.
@@ -523,8 +532,14 @@
     if (cy < vp.offY || cy > vp.offY + vp.drawH) return null;
     const w = canvasToWorld(vp, cx, cy);
 
-    // Clamp to this half only. Taps that land outside this half's y-range
-    // shouldn't happen (viewport limits it), but guard anyway.
+    // In local (full-board) mode the world-y decides which half; just
+    // delegate to the world-coords hit tester.
+    if (role === 'local') {
+      const h = hitTestWorld(w.x, w.y, state);
+      return h || { kind: 'world', x: w.x, y: w.y };
+    }
+
+    // Remote roles render only one half; clamp to that half's y-range.
     const yMin = role === 'top' ? 0 : SEAM_Y;
     const yMax = role === 'top' ? SEAM_Y : WORLD_H;
     if (w.y < yMin || w.y > yMax) return { kind: 'world', x: w.x, y: w.y };
