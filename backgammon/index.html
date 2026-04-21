@@ -14,7 +14,7 @@
     <!-- LOBBY -->
     <section id="screen-lobby" class="screen" aria-label="lobby">
       <h1 class="app-title">Backgammon</h1>
-      <p class="app-subtitle">two phones, one game</p>
+      <p class="app-subtitle">two phones, one board</p>
 
       <div class="lobby-actions">
         <button id="btn-new-game" class="btn btn-primary">New Game</button>
@@ -52,35 +52,35 @@
     </section>
 
     <!-- GAME -->
+    <!-- role-bottom / role-top class applied at runtime flips chrome -->
     <section id="screen-game" class="screen hidden" aria-label="game board">
-      <header class="game-header">
-        <div class="player-label" id="you-label">You — p1</div>
-        <div class="turn-indicator" id="turn-indicator">Your turn</div>
-      </header>
-
       <div class="board-wrap">
         <canvas id="board" aria-label="backgammon board"></canvas>
       </div>
 
-      <section class="hud">
-        <div class="dice-row" id="dice-row" aria-live="polite"></div>
-        <div class="actions">
-          <button id="btn-roll" class="btn btn-primary hidden">Roll dice</button>
-          <button id="btn-new" class="btn btn-primary hidden">New Game</button>
+      <!-- Chrome sits on the OUTER long edge of each phone. On the top phone
+           its contents are rotated 180° via CSS so the sitter reads it. -->
+      <div class="chrome">
+        <div class="chrome-row chrome-top-row">
+          <div class="chrome-label" id="chrome-label">You</div>
+          <div class="chrome-turn" id="chrome-turn">—</div>
         </div>
-        <p id="message" class="message" aria-live="polite"></p>
-      </section>
+        <div class="chrome-row chrome-bottom-row">
+          <button id="btn-roll" class="btn btn-primary hidden">Roll dice</button>
+          <button id="btn-pickup" class="btn btn-primary hidden">Pick up dice</button>
+          <button id="btn-new" class="btn btn-primary hidden">New Game</button>
+          <p id="chrome-message" class="chrome-message" aria-live="polite"></p>
+        </div>
+      </div>
     </section>
   </main>
 
-  <!-- PeerJS CDN -->
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-
-  <!-- TURN config — optional; file is gitignored in practice -->
   <script src="config.js" onerror="console.warn('config.js not present; STUN-only mode')"></script>
 
   <script src="rules.js"></script>
   <script src="board.js"></script>
+  <script src="dice.js"></script>
   <script src="peer.js"></script>
   <script src="main.js"></script>
 </body>

@@ -1,11 +1,15 @@
 # Backgammon
 
-Two-phone multiplayer backgammon as a static site. One player creates a
-room and shares a short code; the other joins. Both see the board from
-their own perspective in real time via WebRTC.
+Two-phone unified-board backgammon as a static site. Two phones held
+landscape, long edges touching, become a single backgammon board — bottom
+phone owns points 1–12, top phone owns points 13–24. Each player sees
+their half right-side-up from their seat; taps on either phone resolve
+across the entire shared board.
 
-See [`VISION.md`](./VISION.md) for the product vision and
-[`specs/`](./specs/) for requirements, design, and status.
+See [`VISION.md`](./VISION.md) for the original product direction and
+[`specs/`](./specs/) for the active requirements, design, and status. The
+current design is the two-phone unified board — the prior mirrored-board
+design is preserved in git history.
 
 ## Running locally
 
@@ -17,39 +21,42 @@ python3 -m http.server 8080
 npx http-server . -p 8080
 ```
 
-Then open http://localhost:8080 in two browser tabs (or two devices on
-the same network). Click **New Game** in one, copy the code to the
-**Join** field in the other.
+Then open http://localhost:8080 on two devices (or two browser tabs).
+Tap **New Game** in one, share the code, **Join** in the other. Hold the
+phones long-edges-touching with the host at the bottom.
 
-For solo playtesting, click **Play locally (one device)** — runs a
-hotseat game on the same device. The board flips perspective to the
-active player each turn.
+**Play locally (one device)** runs a hotseat mode for development. It
+renders only the bottom half of the board (useful for rules debugging,
+not for a real game).
 
 ## Deployment
 
 Static site — publish to GitHub Pages or any static host. Before
-deploying, copy `config.example.js` to `config.js` and fill in your
-TURN credentials (needed for cross-network NAT traversal on some
-mobile networks). `config.js` is gitignored so credentials don't land
-in the public repo.
-
-Without `config.js` the app falls back to STUN-only and works on most
-home networks but will fail on symmetric-NAT cellular connections.
+deploying, copy `config.example.js` to `config.js` and fill in your TURN
+credentials (needed for cross-network NAT traversal on some mobile
+networks). `config.js` is gitignored.
 
 ## Architecture
 
-- `index.html` + `style.css` — shell
-- `rules.js` — pure game state + legal-move computation
-- `board.js` — canvas rendering + tap hit-testing
-- `peer.js` — PeerJS (WebRTC) session management
-- `main.js` — UI wiring, lobby → game flow
+- `index.html` + `style.css` — shell; chrome overlay rotates 180° on the
+  top phone so text reads for the sitter opposite.
+- `rules.js` — pure game state, legal-move computation, move history,
+  pickup gate (mandatory-use rule).
+- `board.js` — canvas rendering in a shared world coordinate system with
+  a role-based viewport crop per phone.
+- `dice.js` — SHA-256 commit-reveal dice protocol. Neither phone alone
+  can bias the rolls; mismatch aborts the session.
+- `peer.js` — PeerJS (WebRTC) session management, unchanged from the
+  prior mirrored design. Carries the new message protocol.
+- `main.js` — UI wiring; role negotiation, die-first move loop, tap
+  forwarding, commit-reveal orchestration, explicit pickup.
 
-Room creator is **host** and owns authoritative state. The joiner is a
-**guest** mirror — it sends intents (roll, move) and renders whatever
-state the host broadcasts back. See `specs/design.md` for details.
+**Turn bookends are physical gestures:** rolling dice starts the turn,
+picking up dice ends it. Between them, tap a die to see legal moves,
+tap a destination to commit a sub-move, tap a moved checker to undo.
 
 ## Scope
 
-v1 implements the full game (board, bar, bearing off, hitting,
-winner). Doubling cube, history, animations, and sound are deferred
-per `VISION.md`.
+Full single-game backgammon (bar, bear-off, hitting, doubles, opening
+roll, mandatory-use rule). **Out of scope:** doubling cube, match play,
+any change to pairing/WebRTC transport.

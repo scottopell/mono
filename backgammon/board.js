@@ -1,12 +1,43 @@
-// Canvas board rendering + hit-testing.
+// Canvas board rendering + hit-testing in shared WORLD coordinates.
 //
-// REQ-BG-003: perspective flip is a render-time transform. Board state
-// indices are shared; only the slot-to-index mapping differs per player.
-// REQ-BG-005: hitTest converts (x,y) taps into board indices / 'bar' / 'off'.
+// REQ-UB-001: single shared world coord system spanning both phones.
+// REQ-UB-002: no per-player flip on board surface. Each phone renders its
+//   half only; the physical seating of the two players makes the viewing
+//   orientation work out automatically.
+// REQ-UB-010: hit-testing returns world coords so cross-seam taps can be
+//   forwarded to the active phone for re-hit-testing.
+// REQ-UB-013: bear-off strip along the outer short edge of the active
+//   player's home quadrant.
+//
+// World layout:
+//
+//   x: 0                                             W
+//   y: 0  ┌─┬──────────────┬─┬──────────────┬─┐
+//         │ │  13 .. 18    │ │  19 .. 24    │T│   top half (role 'top')
+//         │L│ (outer)      │B│ (home of p2) │R│
+//   H/2   │ ├──────────────┤A├──────────────┤A│───── seam
+//         │R│  12 .. 7     │R│   6 .. 1     │Y│
+//         │ │ (outer)      │ │ (home of p1) │ │   bottom half ('bottom')
+//   y: H  └─┴──────────────┴─┴──────────────┴─┘
+//
+// Points are indexed 0..23 in state.board. Visual layout:
+//   index 0  = p1 1-point  (home, bottom-right-inner)
+//   index 5  = p1 6-point  (bar-side of p1 home)
+//   index 11 = p1 12-point (outer-right-top of bottom row... actually
+//              leftmost of the bottom outer quadrant)
+//   index 12 = p2 12-point mirror (leftmost of top outer quadrant)
+//   index 23 = p2 1-point mirror (top-right-inner)
+//
+// Concretely: bottom row (y > H/2) shows points 1..12, visually
+//   left-to-right as 12, 11, 10, 9, 8, 7, [BAR], 6, 5, 4, 3, 2, 1.
+//   (That is: outer quadrant on the left, home on the right.)
+//   → indices:           11, 10,  9, 8, 7, 6,       5, 4, 3, 2, 1, 0
+// Top row (y < H/2) shows points 13..24, visually left-to-right as
+//   13, 14, 15, 16, 17, 18, [BAR], 19, 20, 21, 22, 23, 24.
+//   → indices:              12, 13, 14, 15, 16, 17,       18, 19, 20, 21, 22, 23
 (() => {
   'use strict';
 
-  // Color palette — kept in sync with style.css variables.
   const COLORS = {
     frame: '#1a0f08',
     felt: '#3a2a1a',
@@ -20,231 +51,304 @@
     checkerP2Edge: '#5a4a3a',
     highlight: '#f2c878',
     highlightDim: 'rgba(242, 200, 120, 0.35)',
+    highlightSource: 'rgba(242, 200, 120, 0.55)',
     label: '#3a2a1a',
     labelLight: '#f3e8d4',
     trayBg: '#2a1b0f',
+    dieFace: '#f3e8d4',
+    dieFaceUsed: '#8a7a60',
+    diePip: '#1a0f08',
+    bearOffStrip: 'rgba(242, 200, 120, 0.18)',
+    bearOffStripActive: 'rgba(242, 200, 120, 0.45)',
   };
 
-  // ---------- Layout ----------
+  // World dimensions are arbitrary — the whole thing scales to the canvas.
+  const WORLD_W = 1400;
+  const WORLD_H = 900;
+  const FRAME = 20;
+  const BAR_W = 90;
+  const TRAY_W = 90;
+  const INNER_L = FRAME + TRAY_W;                  // left tray sits at 0..TRAY_W
+  const INNER_R = WORLD_W - FRAME - TRAY_W;
+  const INNER_W = INNER_R - INNER_L;
+  const POINT_W = (INNER_W - BAR_W) / 12;
+  const BAR_L = INNER_L + POINT_W * 6;
+  const SEAM_Y = WORLD_H / 2;
+  const POINT_H = (WORLD_H / 2 - FRAME) * 0.86;
 
-  function computeLayout(canvasW, canvasH) {
-    // Reserve some padding inside the canvas
-    const padX = 6;
-    const padY = 6;
+  // Column center X in world coords, indexed 0..11 left-to-right within a half.
+  function colCenter(col) {
+    if (col < 6) return INNER_L + POINT_W * (col + 0.5);
+    return BAR_L + BAR_W + POINT_W * (col - 6 + 0.5);
+  }
 
-    // Canvas is already sized to roughly the right aspect (resizeCanvas);
-    // use nearly all of it, leaving only the small padding.
-    let boardW = canvasW - 2 * padX;
-    let boardH = canvasH - 2 * padY;
-    const originX = (canvasW - boardW) / 2;
-    const originY = (canvasH - boardH) / 2;
-
-    const frame = Math.max(6, Math.min(boardW, boardH) * 0.025);
-    const barW = boardW * 0.07;
-    const trayW = boardW * 0.08;
-    const innerW = boardW - 2 * frame;
-    const innerH = boardH - 2 * frame;
-    const pointW = (innerW - barW - trayW) / 12;
-    const pointH = innerH * 0.44;
-
-    const left = originX + frame;
-    const top = originY + frame;
-
-    const cols = [];
-    // Left 6 columns
-    for (let i = 0; i < 6; i++) cols.push(left + pointW * (i + 0.5));
-    // Bar after col 5
-    const barX = left + pointW * 6;
-    // Right 6 columns
-    for (let i = 0; i < 6; i++) cols.push(left + pointW * 6 + barW + pointW * (i + 0.5));
-    const trayX = left + pointW * 12 + barW;
-
+  // Map board index → { x, yBase, yTip, half }.
+  // Bottom row (half='bottom'): indices 0..11 visually left-to-right = 11..0.
+  // Top row    (half='top'):    indices 12..23 visually left-to-right = 12..23.
+  function pointAnchor(idx) {
+    if (idx <= 11) {
+      // col 0 (leftmost) = index 11; col 11 (rightmost) = index 0.
+      const col = 11 - idx;
+      return {
+        x: colCenter(col),
+        yBase: WORLD_H - FRAME,
+        yTip: WORLD_H - FRAME - POINT_H,
+        half: 'bottom',
+        col,
+      };
+    }
+    const col = idx - 12;
     return {
-      canvasW, canvasH,
-      originX, originY,
-      boardW, boardH,
-      padX, padY, frame,
-      left, top, innerW, innerH,
-      barX, barW, trayX, trayW,
-      pointW, pointH, cols,
-      barCenterX: barX + barW / 2,
-      trayCenterX: trayX + trayW / 2,
+      x: colCenter(col),
+      yBase: FRAME,
+      yTip: FRAME + POINT_H,
+      half: 'top',
+      col,
     };
   }
 
-  function slotForIndex(idx, perspective) {
-    if (perspective === 'p1') {
-      return idx >= 12
-        ? { row: 'top', col: idx - 12 }
-        : { row: 'bottom', col: 11 - idx };
-    }
-    return idx >= 12
-      ? { row: 'bottom', col: 23 - idx }
-      : { row: 'top', col: idx };
+  // Which half does a point live in? 'top' for 12..23, 'bottom' for 0..11.
+  function halfForIndex(idx) { return idx <= 11 ? 'bottom' : 'top'; }
+
+  // Each player's home quadrant in world terms.
+  //   p1 home = indices 0..5, bottom-right quadrant.
+  //   p2 home = indices 18..23, top-right quadrant.
+  function homeQuadrantRect(player) {
+    const x = BAR_L + BAR_W;
+    const w = POINT_W * 6;
+    if (player === 'p1') return { x, y: SEAM_Y, w, h: WORLD_H / 2 };
+    return { x, y: 0, w, h: WORLD_H / 2 };
   }
 
-  function indexForSlot(row, col, perspective) {
-    if (perspective === 'p1') {
-      return row === 'top' ? 12 + col : 11 - col;
-    }
-    return row === 'top' ? col : 23 - col;
+  // Bear-off strip sits in the outer tray beside the player's home quadrant.
+  function bearOffRect(player) {
+    const x = WORLD_W - FRAME - TRAY_W;
+    const w = TRAY_W;
+    if (player === 'p1') return { x, y: SEAM_Y, w, h: WORLD_H / 2 };
+    return { x, y: 0, w, h: WORLD_H / 2 };
   }
 
-  function pointColor(col, row) {
-    const isLight = (col + (row === 'top' ? 1 : 0)) % 2 === 0;
-    return isLight ? COLORS.pointLight : COLORS.pointDark;
+  // ---------- Viewport mapping ----------
+
+  // Given a canvas size and a role, build a transform from world coords
+  // (x in 0..W, y in 0..H) to canvas coords. Each phone sees its own half
+  // stretched to fill the canvas.
+  function viewportFor(canvasW, canvasH, role) {
+    // Source rect in world:
+    const srcY = role === 'top' ? 0 : SEAM_Y;
+    const srcH = WORLD_H / 2;
+    const srcX = 0;
+    const srcW = WORLD_W;
+    // Fit srcW × srcH into canvasW × canvasH preserving aspect.
+    const sx = canvasW / srcW;
+    const sy = canvasH / srcH;
+    const s = Math.min(sx, sy);
+    const drawW = srcW * s;
+    const drawH = srcH * s;
+    const offX = (canvasW - drawW) / 2;
+    const offY = (canvasH - drawH) / 2;
+    return {
+      srcX, srcY, srcW, srcH,
+      scale: s,
+      offX, offY,
+      drawW, drawH,
+      role,
+    };
   }
 
-  // Anchor = base of the triangle (checker stack grows from here).
-  function pointAnchor(layout, row, col) {
-    const x = layout.cols[col];
-    const y = row === 'top' ? layout.top : layout.top + layout.innerH;
-    const tipY = row === 'top' ? y + layout.pointH : y - layout.pointH;
-    return { x, y, tipY, row };
+  // World → canvas. Points in the other half end up off-canvas.
+  function worldToCanvas(vp, wx, wy) {
+    return {
+      x: vp.offX + (wx - vp.srcX) * vp.scale,
+      y: vp.offY + (wy - vp.srcY) * vp.scale,
+    };
+  }
+
+  // Canvas → world. Used by hit-testing.
+  function canvasToWorld(vp, cx, cy) {
+    return {
+      x: vp.srcX + (cx - vp.offX) / vp.scale,
+      y: vp.srcY + (cy - vp.offY) / vp.scale,
+    };
   }
 
   // ---------- Rendering ----------
 
-  function renderBoard(ctx, state, perspective, uiState) {
+  function renderBoard(ctx, state, role, uiState) {
     const canvas = ctx.canvas;
     const w = canvas.clientWidth || canvas.width;
     const h = canvas.clientHeight || canvas.height;
-    const layout = computeLayout(w, h);
+    const vp = viewportFor(w, h, role);
 
-    // Full-canvas clear
     ctx.clearRect(0, 0, w, h);
 
-    // Frame
+    // Backdrop fills the viewport only (the other half stays black).
+    ctx.save();
+    ctx.translate(vp.offX, vp.offY);
+    ctx.scale(vp.scale, vp.scale);
+    ctx.translate(-vp.srcX, -vp.srcY);
+
+    // Clip to the visible half so nothing from the other half leaks in
+    // (mostly belt-and-braces — we only draw this phone's geometry below).
+    ctx.beginPath();
+    ctx.rect(vp.srcX, vp.srcY, vp.srcW, vp.srcH);
+    ctx.clip();
+
+    // Frame + felt
     ctx.fillStyle = COLORS.frame;
-    roundRect(ctx, layout.originX, layout.originY, layout.boardW, layout.boardH, 8);
-    ctx.fill();
-
-    // Felt
+    ctx.fillRect(0, vp.srcY, WORLD_W, vp.srcH);
     ctx.fillStyle = COLORS.felt;
-    ctx.fillRect(layout.left, layout.top, layout.innerW, layout.innerH);
-
-    // Points
-    for (let col = 0; col < 12; col++) {
-      drawPoint(ctx, layout, 'top', col);
-      drawPoint(ctx, layout, 'bottom', col);
+    if (role === 'bottom') {
+      ctx.fillRect(INNER_L, SEAM_Y, INNER_R - INNER_L, WORLD_H / 2 - FRAME);
+    } else {
+      ctx.fillRect(INNER_L, FRAME, INNER_R - INNER_L, WORLD_H / 2 - FRAME);
     }
+
+    // Trays on left + right (outer)
+    ctx.fillStyle = COLORS.trayBg;
+    const trayY = role === 'top' ? FRAME : SEAM_Y;
+    const trayH = WORLD_H / 2 - FRAME;
+    ctx.fillRect(FRAME, trayY, TRAY_W, trayH);
+    ctx.fillRect(WORLD_W - FRAME - TRAY_W, trayY, TRAY_W, trayH);
 
     // Bar
     ctx.fillStyle = COLORS.bar;
-    ctx.fillRect(layout.barX, layout.top, layout.barW, layout.innerH);
-    ctx.strokeStyle = COLORS.barEdge;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(layout.barX + 0.5, layout.top + 0.5, layout.barW - 1, layout.innerH - 1);
+    ctx.fillRect(BAR_L, trayY, BAR_W, trayH);
 
-    // Tray
-    ctx.fillStyle = COLORS.trayBg;
-    ctx.fillRect(layout.trayX, layout.top, layout.trayW, layout.innerH);
-    ctx.strokeRect(layout.trayX + 0.5, layout.top + 0.5, layout.trayW - 1, layout.innerH - 1);
-
-    // Selection + legal-destination highlights
-    const selected = uiState && uiState.selected;
-    let legalTargets = new Set();
-    if (selected !== undefined && selected !== null) {
-      const moves = window.BackgammonRules.legalMovesFrom(state, selected);
-      for (const m of moves) legalTargets.add(m.to);
-      highlightSource(ctx, layout, perspective, selected);
+    // Points in this half
+    const halfRange = role === 'bottom' ? [0, 11] : [12, 23];
+    for (let i = halfRange[0]; i <= halfRange[1]; i++) {
+      drawPoint(ctx, i);
     }
-    for (const t of legalTargets) highlightDestination(ctx, layout, perspective, t);
 
-    // Checkers on points
-    for (let i = 0; i < 24; i++) {
+    // Bear-off strip for the active player, if legal and in this half.
+    const activePlayer = state.turn;
+    if (
+      state.phase === 'move' && activePlayer &&
+      window.BackgammonRules.canBearOff(state, activePlayer)
+    ) {
+      const stripHalf = activePlayer === 'p1' ? 'bottom' : 'top';
+      if (stripHalf === role) {
+        const r = bearOffRect(activePlayer);
+        const active = uiState && uiState.highlights &&
+          uiState.highlights.hasBearOff;
+        ctx.fillStyle = active ? COLORS.bearOffStripActive : COLORS.bearOffStrip;
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+        ctx.strokeStyle = COLORS.highlight;
+        ctx.lineWidth = active ? 3 : 1;
+        ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+      }
+    }
+
+    // Highlights (sources in current selection and destinations)
+    if (uiState && uiState.highlights) {
+      const { sources, destinations } = uiState.highlights;
+      if (sources) {
+        for (const src of sources) drawSourceHighlight(ctx, src);
+      }
+      if (destinations) {
+        for (const dst of destinations) drawDestinationHighlight(ctx, dst);
+      }
+    }
+
+    // Checkers
+    for (let i = halfRange[0]; i <= halfRange[1]; i++) {
       const count = Math.abs(state.board[i]);
       if (count === 0) continue;
       const owner = state.board[i] > 0 ? 'p1' : 'p2';
-      drawCheckerStack(ctx, layout, i, perspective, owner, count);
+      drawCheckerStack(ctx, i, owner, count);
     }
 
-    // Bar checkers
-    drawBarStack(ctx, layout, perspective, 'p1', state.bar.p1);
-    drawBarStack(ctx, layout, perspective, 'p2', state.bar.p2);
+    // Bar checkers for whichever player's bar stack is on this half.
+    // Convention: p1's bar checkers sit on the bottom half (near p1's side),
+    // p2's on the top half.
+    drawBarStack(ctx, 'p1', state.bar.p1, role);
+    drawBarStack(ctx, 'p2', state.bar.p2, role);
 
-    // Borne-off tray
-    drawTray(ctx, layout, perspective, state.borneOff);
+    // Borne-off tray: p1 tray sits in bottom-right outer, p2 in top-right outer.
+    drawBornOffStack(ctx, 'p1', state.borneOff.p1, role);
+    drawBornOffStack(ctx, 'p2', state.borneOff.p2, role);
+
+    // Dice on the active player's home quadrant, if rolled.
+    if (state.phase === 'move' && state.dice[0] != null && activePlayer) {
+      drawDice(ctx, state, role, uiState && uiState.selectedDie);
+    }
+
+    ctx.restore();
   }
 
-  function drawPoint(ctx, layout, row, col) {
-    const a = pointAnchor(layout, row, col);
-    const halfW = layout.pointW / 2;
-    ctx.fillStyle = pointColor(col, row);
+  function drawPoint(ctx, idx) {
+    const a = pointAnchor(idx);
+    const halfW = POINT_W / 2;
+    const isLight = (a.col + (a.half === 'top' ? 1 : 0)) % 2 === 0;
+    ctx.fillStyle = isLight ? COLORS.pointLight : COLORS.pointDark;
     ctx.beginPath();
-    ctx.moveTo(a.x - halfW, a.y);
-    ctx.lineTo(a.x + halfW, a.y);
-    ctx.lineTo(a.x, a.tipY);
+    ctx.moveTo(a.x - halfW, a.yBase);
+    ctx.lineTo(a.x + halfW, a.yBase);
+    ctx.lineTo(a.x, a.yTip);
     ctx.closePath();
     ctx.fill();
   }
 
-  function drawCheckerStack(ctx, layout, idx, perspective, owner, count) {
-    const slot = slotForIndex(idx, perspective);
-    const anchor = pointAnchor(layout, slot.row, slot.col);
-    const r = Math.min(layout.pointW * 0.42, layout.pointH / 10);
-    const dy = slot.row === 'top' ? 1 : -1;
-
+  function drawCheckerStack(ctx, idx, owner, count) {
+    const a = pointAnchor(idx);
+    const r = Math.min(POINT_W * 0.42, POINT_H / 10);
+    const dy = a.half === 'top' ? 1 : -1;
     const visible = Math.min(count, 5);
     for (let i = 0; i < visible; i++) {
-      const cy = anchor.y + dy * (r + i * 2 * r);
-      drawChecker(ctx, anchor.x, cy, r, owner);
+      const cy = a.yBase + dy * (r + i * 2 * r);
+      drawChecker(ctx, a.x, cy, r, owner);
     }
     if (count > 5) {
-      const cy = anchor.y + dy * (r + (visible - 1) * 2 * r);
-      drawCountLabel(ctx, anchor.x, cy, r, count, owner);
+      const cy = a.yBase + dy * (r + (visible - 1) * 2 * r);
+      drawCountLabel(ctx, a.x, cy, r, count, owner);
     }
   }
 
-  function drawBarStack(ctx, layout, perspective, owner, count) {
+  function drawBarStack(ctx, owner, count, role) {
     if (count === 0) return;
-    // Bar always shows the current-perspective player on bottom half and
-    // opponent on top half, so each player sees their own bar checkers
-    // near their side.
-    const isSelf = owner === perspective;
-    const r = Math.min(layout.barW * 0.40, layout.pointH / 10);
-    const cx = layout.barCenterX;
-    const centerY = layout.top + layout.innerH / 2;
-    const baseY = isSelf ? centerY + r * 2 : centerY - r * 2;
-    const dy = isSelf ? 1 : -1;
+    const isOnThisHalf =
+      (owner === 'p1' && role === 'bottom') ||
+      (owner === 'p2' && role === 'top');
+    if (!isOnThisHalf) return;
+
+    const r = Math.min(BAR_W * 0.40, POINT_H / 10);
+    const cx = BAR_L + BAR_W / 2;
+    const startY = owner === 'p1'
+      ? SEAM_Y + r + 8
+      : SEAM_Y - r - 8;
+    const dy = owner === 'p1' ? 1 : -1;
     const visible = Math.min(count, 4);
     for (let i = 0; i < visible; i++) {
-      drawChecker(ctx, cx, baseY + dy * i * 2 * r, r, owner);
+      drawChecker(ctx, cx, startY + dy * i * 2 * r, r, owner);
     }
     if (count > 4) {
-      const cy = baseY + dy * (visible - 1) * 2 * r;
+      const cy = startY + dy * (visible - 1) * 2 * r;
       drawCountLabel(ctx, cx, cy, r, count, owner);
     }
   }
 
-  function drawTray(ctx, layout, perspective, borneOff) {
-    const selfKey = perspective;
-    const oppKey = perspective === 'p1' ? 'p2' : 'p1';
-    const r = layout.trayW * 0.38;
-    const cx = layout.trayCenterX;
-
-    // Self (bottom half): stack from bottom up
-    drawTrayStack(ctx, cx, layout.top + layout.innerH - r - 2, r, borneOff[selfKey], selfKey, -1);
-    // Opponent (top half)
-    drawTrayStack(ctx, cx, layout.top + r + 2, r, borneOff[oppKey], oppKey, 1);
-  }
-
-  function drawTrayStack(ctx, cx, baseY, r, count, owner, dy) {
+  function drawBornOffStack(ctx, owner, count, role) {
     if (count === 0) return;
-    const thickness = Math.max(4, r * 0.35);
+    const isOnThisHalf =
+      (owner === 'p1' && role === 'bottom') ||
+      (owner === 'p2' && role === 'top');
+    if (!isOnThisHalf) return;
+    const rect = bearOffRect(owner);
+    const cx = rect.x + rect.w / 2;
+    const thick = Math.max(6, rect.h / 24);
+    const baseY = owner === 'p1' ? rect.y + rect.h - thick - 4 : rect.y + thick + 4;
+    const dy = owner === 'p1' ? -1 : 1;
     const visible = Math.min(count, 8);
     for (let i = 0; i < visible; i++) {
-      const y = baseY + dy * i * thickness;
-      drawPuck(ctx, cx, y, r, thickness, owner);
+      drawPuck(ctx, cx, baseY + dy * i * thick, rect.w * 0.38, thick, owner);
     }
-    if (count > 0) {
-      const y = baseY + dy * (visible + 0.5) * thickness;
-      ctx.fillStyle = COLORS.labelLight;
-      ctx.font = `bold ${Math.floor(r)}px ui-monospace, monospace`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(`${count}/15`, cx, y);
-    }
+    const labelY = baseY + dy * (visible + 0.7) * thick;
+    ctx.fillStyle = COLORS.labelLight;
+    ctx.font = `bold ${Math.floor(rect.w * 0.28)}px ui-monospace, monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${count}/15`, cx, labelY);
   }
 
   function drawPuck(ctx, cx, cy, r, h, owner) {
@@ -265,7 +369,6 @@
     ctx.strokeStyle = owner === 'p1' ? COLORS.checkerP1Edge : COLORS.checkerP2Edge;
     ctx.lineWidth = Math.max(1, r * 0.08);
     ctx.stroke();
-    // Inner ring for a tactile look
     ctx.beginPath();
     ctx.arc(cx, cy, r * 0.65, 0, Math.PI * 2);
     ctx.stroke();
@@ -279,65 +382,234 @@
     ctx.fillText(String(count), cx, cy);
   }
 
-  function highlightSource(ctx, layout, perspective, from) {
+  function drawSourceHighlight(ctx, src) {
     ctx.save();
     ctx.strokeStyle = COLORS.highlight;
+    ctx.fillStyle = COLORS.highlightSource;
     ctx.lineWidth = 3;
-    if (from === 'bar') {
-      ctx.strokeRect(layout.barX, layout.top, layout.barW, layout.innerH);
-    } else if (typeof from === 'number') {
-      const slot = slotForIndex(from, perspective);
-      const a = pointAnchor(layout, slot.row, slot.col);
+    if (src === 'bar') {
+      ctx.fillRect(BAR_L, FRAME, BAR_W, WORLD_H - 2 * FRAME);
+      ctx.strokeRect(BAR_L, FRAME, BAR_W, WORLD_H - 2 * FRAME);
+    } else if (typeof src === 'number') {
+      const a = pointAnchor(src);
+      const halfW = POINT_W / 2;
       ctx.beginPath();
-      ctx.moveTo(a.x - layout.pointW / 2, a.y);
-      ctx.lineTo(a.x + layout.pointW / 2, a.y);
-      ctx.lineTo(a.x, a.tipY);
-      ctx.closePath();
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  function highlightDestination(ctx, layout, perspective, to) {
-    ctx.save();
-    if (to === 'off') {
-      ctx.fillStyle = COLORS.highlightDim;
-      ctx.fillRect(layout.trayX, layout.top, layout.trayW, layout.innerH);
-      ctx.strokeStyle = COLORS.highlight;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(layout.trayX, layout.top, layout.trayW, layout.innerH);
-    } else if (typeof to === 'number') {
-      const slot = slotForIndex(to, perspective);
-      const a = pointAnchor(layout, slot.row, slot.col);
-      ctx.fillStyle = COLORS.highlightDim;
-      ctx.beginPath();
-      ctx.moveTo(a.x - layout.pointW / 2, a.y);
-      ctx.lineTo(a.x + layout.pointW / 2, a.y);
-      ctx.lineTo(a.x, a.tipY);
+      ctx.moveTo(a.x - halfW, a.yBase);
+      ctx.lineTo(a.x + halfW, a.yBase);
+      ctx.lineTo(a.x, a.yTip);
       ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = COLORS.highlight;
-      ctx.lineWidth = 2;
       ctx.stroke();
     }
     ctx.restore();
   }
 
-  // ---------- Hit-testing ----------
+  function drawDestinationHighlight(ctx, dst) {
+    ctx.save();
+    ctx.strokeStyle = COLORS.highlight;
+    ctx.fillStyle = COLORS.highlightDim;
+    ctx.lineWidth = 2;
+    if (dst === 'off-p1' || dst === 'off-p2') {
+      const r = bearOffRect(dst === 'off-p1' ? 'p1' : 'p2');
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+    } else if (typeof dst === 'number') {
+      const a = pointAnchor(dst);
+      const halfW = POINT_W / 2;
+      ctx.beginPath();
+      ctx.moveTo(a.x - halfW, a.yBase);
+      ctx.lineTo(a.x + halfW, a.yBase);
+      ctx.lineTo(a.x, a.yTip);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 
-  function hitTest(x, y, canvasW, canvasH, perspective) {
-    const layout = computeLayout(canvasW, canvasH);
-    if (y < layout.top || y > layout.top + layout.innerH) return null;
-    if (x < layout.left) return null;
+  // Dice positions in world coords — inside the active player's home quadrant.
+  // Up to 4 positions (doubles); we always compute 4 and only draw as many as
+  // are in state.dice/diceRemaining.
+  function dicePositions(state) {
+    const player = state.turn;
+    const quad = homeQuadrantRect(player);
+    const count = state.dice[0] === state.dice[1] ? 4 : 2;
+    const size = Math.min(quad.w / 7, quad.h / 3.5);
+    const gap = size * 0.3;
+    const totalW = count * size + (count - 1) * gap;
+    const startX = quad.x + (quad.w - totalW) / 2;
+    const y = quad.y + (quad.h - size) / 2;
+    const positions = [];
+    for (let i = 0; i < count; i++) {
+      positions.push({
+        x: startX + i * (size + gap),
+        y,
+        size,
+        value: count === 4 ? state.dice[0] : state.dice[i],
+      });
+    }
+    return positions;
+  }
 
-    if (x >= layout.barX && x < layout.barX + layout.barW) return 'bar';
-    if (x >= layout.trayX && x < layout.trayX + layout.trayW) return 'off';
+  function drawDice(ctx, state, role, selectedDieIdx) {
+    const player = state.turn;
+    const quadHalf = player === 'p1' ? 'bottom' : 'top';
+    if (quadHalf !== role) return; // dice are only in one half
+    const positions = dicePositions(state);
+    // Track which positions are "used" — a die value that's not in
+    // diceRemaining is used.
+    const remaining = state.diceRemaining.slice();
+    const isDoubles = state.dice[0] === state.dice[1];
+    for (let i = 0; i < positions.length; i++) {
+      const p = positions[i];
+      let used;
+      if (isDoubles) {
+        // Used count for this value is (4 - remaining.length).
+        const usedCount = 4 - remaining.length;
+        used = i < usedCount;
+      } else {
+        const idx = remaining.indexOf(p.value);
+        if (idx === -1) { used = true; } else { used = false; remaining.splice(idx, 1); }
+      }
+      drawDie(ctx, p.x, p.y, p.size, p.value, used, i === selectedDieIdx);
+    }
+  }
 
+  function drawDie(ctx, x, y, size, value, used, selected) {
+    ctx.save();
+    ctx.fillStyle = used ? COLORS.dieFaceUsed : COLORS.dieFace;
+    ctx.strokeStyle = selected ? COLORS.highlight : COLORS.frame;
+    ctx.lineWidth = selected ? 4 : 2;
+    const r = size * 0.15;
+    roundRect(ctx, x, y, size, size, r);
+    ctx.fill();
+    ctx.stroke();
+    // Pips
+    ctx.fillStyle = COLORS.diePip;
+    const pipR = size * 0.08;
+    const pad = size * 0.25;
+    const cx = x + size / 2, cy = y + size / 2;
+    const lx = x + pad, rx = x + size - pad;
+    const ty = y + pad, by_ = y + size - pad;
+    const midY = cy;
+    const pips = {
+      1: [[cx, cy]],
+      2: [[lx, ty], [rx, by_]],
+      3: [[lx, ty], [cx, cy], [rx, by_]],
+      4: [[lx, ty], [rx, ty], [lx, by_], [rx, by_]],
+      5: [[lx, ty], [rx, ty], [cx, cy], [lx, by_], [rx, by_]],
+      6: [[lx, ty], [rx, ty], [lx, midY], [rx, midY], [lx, by_], [rx, by_]],
+    }[value] || [];
+    for (const [px, py] of pips) {
+      ctx.beginPath();
+      ctx.arc(px, py, pipR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // ---------- Hit testing ----------
+
+  // Given a canvas tap, return a descriptor in WORLD terms:
+  //   { kind:'point', idx }
+  //   { kind:'bar' }
+  //   { kind:'bearOff', player: 'p1'|'p2' }
+  //   { kind:'die', index: 0..3 }       — based on the dice currently rolled
+  //   { kind:'world', x, y }             — generic world point (for forwarding)
+  //   null (outside viewport)
+  function hitTest(cx, cy, canvasW, canvasH, role, state) {
+    const vp = viewportFor(canvasW, canvasH, role);
+    if (cx < vp.offX || cx > vp.offX + vp.drawW) return null;
+    if (cy < vp.offY || cy > vp.offY + vp.drawH) return null;
+    const w = canvasToWorld(vp, cx, cy);
+
+    // Clamp to this half only. Taps that land outside this half's y-range
+    // shouldn't happen (viewport limits it), but guard anyway.
+    const yMin = role === 'top' ? 0 : SEAM_Y;
+    const yMax = role === 'top' ? SEAM_Y : WORLD_H;
+    if (w.y < yMin || w.y > yMax) return { kind: 'world', x: w.x, y: w.y };
+
+    // Dice?
+    if (state && state.phase === 'move' && state.dice[0] != null) {
+      const quadHalf = state.turn === 'p1' ? 'bottom' : 'top';
+      if (quadHalf === role) {
+        const positions = dicePositions(state);
+        for (let i = 0; i < positions.length; i++) {
+          const p = positions[i];
+          if (w.x >= p.x && w.x <= p.x + p.size &&
+              w.y >= p.y && w.y <= p.y + p.size) {
+            return { kind: 'die', index: i };
+          }
+        }
+      }
+    }
+
+    // Bear-off strip for the active player?
+    if (state && state.phase === 'move' && state.turn &&
+        window.BackgammonRules.canBearOff(state, state.turn)) {
+      const stripHalf = state.turn === 'p1' ? 'bottom' : 'top';
+      if (stripHalf === role) {
+        const r = bearOffRect(state.turn);
+        if (w.x >= r.x && w.x <= r.x + r.w &&
+            w.y >= r.y && w.y <= r.y + r.h) {
+          return { kind: 'bearOff', player: state.turn };
+        }
+      }
+    }
+
+    // Bar?
+    if (w.x >= BAR_L && w.x < BAR_L + BAR_W) {
+      return { kind: 'bar' };
+    }
+
+    // Points by column?
     for (let col = 0; col < 12; col++) {
-      const cx = layout.cols[col];
-      if (x >= cx - layout.pointW / 2 && x < cx + layout.pointW / 2) {
-        const row = y < layout.top + layout.innerH / 2 ? 'top' : 'bottom';
-        return indexForSlot(row, col, perspective);
+      const cxw = colCenter(col);
+      if (w.x >= cxw - POINT_W / 2 && w.x < cxw + POINT_W / 2) {
+        // Which index lives at (this col, this half)?
+        if (role === 'bottom') return { kind: 'point', idx: 11 - col };
+        return { kind: 'point', idx: 12 + col };
+      }
+    }
+    return { kind: 'world', x: w.x, y: w.y };
+  }
+
+  // Re-run hit-testing against a world-coord point (from a forwarded tap).
+  // Used by the active phone to interpret taps that originated on the
+  // passive phone.
+  function hitTestWorld(wx, wy, state) {
+    // Which half does the world coord fall in? Interpret against that half.
+    const role = wy < SEAM_Y ? 'top' : 'bottom';
+
+    if (state && state.phase === 'move' && state.dice[0] != null) {
+      const quadHalf = state.turn === 'p1' ? 'bottom' : 'top';
+      if (quadHalf === role) {
+        const positions = dicePositions(state);
+        for (let i = 0; i < positions.length; i++) {
+          const p = positions[i];
+          if (wx >= p.x && wx <= p.x + p.size &&
+              wy >= p.y && wy <= p.y + p.size) {
+            return { kind: 'die', index: i };
+          }
+        }
+      }
+    }
+    if (state && state.phase === 'move' && state.turn &&
+        window.BackgammonRules.canBearOff(state, state.turn)) {
+      const stripHalf = state.turn === 'p1' ? 'bottom' : 'top';
+      if (stripHalf === role) {
+        const r = bearOffRect(state.turn);
+        if (wx >= r.x && wx <= r.x + r.w && wy >= r.y && wy <= r.y + r.h) {
+          return { kind: 'bearOff', player: state.turn };
+        }
+      }
+    }
+    if (wx >= BAR_L && wx < BAR_L + BAR_W) return { kind: 'bar' };
+    for (let col = 0; col < 12; col++) {
+      const cxw = colCenter(col);
+      if (wx >= cxw - POINT_W / 2 && wx < cxw + POINT_W / 2) {
+        if (role === 'bottom') return { kind: 'point', idx: 11 - col };
+        return { kind: 'point', idx: 12 + col };
       }
     }
     return null;
@@ -345,7 +617,6 @@
 
   // ---------- Misc ----------
 
-  // Builds the path for a rounded rectangle. Caller decides fill/stroke.
   function roundRect(ctx, x, y, w, h, r) {
     ctx.beginPath();
     ctx.moveTo(x + r, y);
@@ -356,23 +627,15 @@
     ctx.closePath();
   }
 
-  // Size the canvas to fit its wrap while maintaining a 3:2 aspect ratio.
-  // Sets both CSS size and buffer size (DPR-scaled).
+  // Size the canvas to fit its wrap. Since each phone shows a single half
+  // (world ratio 1400:450 → roughly 3.1:1), a landscape phone in portrait
+  // orientation will letterbox; landscape orientation fills better.
   function resizeCanvas(canvas) {
     const dpr = window.devicePixelRatio || 1;
     const wrap = canvas.parentElement;
     const wrapRect = wrap.getBoundingClientRect();
-    // Narrower aspect on tall portrait viewports so the board fills more of
-    // the available space; wider aspect on landscape/desktop for the
-    // traditional look.
-    const isPortrait = wrapRect.height > wrapRect.width;
-    const targetAspect = isPortrait ? 1.25 : 1.6;
     let cssW = wrapRect.width;
-    let cssH = cssW / targetAspect;
-    if (cssH > wrapRect.height) {
-      cssH = wrapRect.height;
-      cssW = cssH * targetAspect;
-    }
+    let cssH = wrapRect.height;
     canvas.style.width = cssW + 'px';
     canvas.style.height = cssH + 'px';
     canvas.width = Math.max(1, Math.floor(cssW * dpr));
@@ -385,6 +648,16 @@
   window.BackgammonBoard = {
     renderBoard,
     hitTest,
+    hitTestWorld,
     resizeCanvas,
+    // Exposed for test harness:
+    viewportFor,
+    canvasToWorld,
+    worldToCanvas,
+    pointAnchor,
+    dicePositions,
+    bearOffRect,
+    homeQuadrantRect,
+    WORLD_W, WORLD_H, SEAM_Y,
   };
 })();

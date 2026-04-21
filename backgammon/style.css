@@ -9,18 +9,6 @@
   --danger: #c0524a;
   --ok: #6cb27a;
   --warn: #d9a55e;
-
-  --point-light: #d9c3a0;
-  --point-dark: #6b3b24;
-  --board-felt: #3a2a1a;
-  --board-frame: #1a0f08;
-  --bar: #2a1b0f;
-
-  --checker-p1: #f3e8d4;
-  --checker-p1-edge: #b8a487;
-  --checker-p2: #1f1610;
-  --checker-p2-edge: #3a2a1a;
-  --highlight: #f2c878;
 }
 
 * { box-sizing: border-box; }
@@ -43,7 +31,7 @@ html, body {
   flex-direction: column;
   height: 100vh;
   height: 100dvh;
-  max-width: 900px;
+  max-width: 100%;
   margin: 0 auto;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
@@ -132,7 +120,7 @@ html, body {
 }
 
 .btn {
-  padding: 0.85rem 1.25rem;
+  padding: 0.75rem 1.1rem;
   background: var(--panel);
   color: var(--ink);
   border: 1px solid var(--accent-dim);
@@ -143,7 +131,7 @@ html, body {
   transition: background 0.1s ease, border-color 0.1s ease;
 }
 .btn:hover:not(:disabled) { background: var(--bg-2); }
-.btn:active:not(:disabled) { background: var(--board-felt); }
+.btn:active:not(:disabled) { background: var(--panel); }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .btn-primary {
@@ -152,8 +140,6 @@ html, body {
   border-color: var(--accent);
   font-weight: 600;
 }
-.btn-primary:hover:not(:disabled) { background: #e8b469; }
-.btn-primary:active:not(:disabled) { background: #c49354; }
 
 .btn-ghost {
   background: transparent;
@@ -188,111 +174,94 @@ html, body {
   border-radius: 12px;
   min-width: 5em;
 }
-.waiting-hint {
-  color: var(--ink-dim);
-  font-size: 0.95rem;
-  margin: 0;
-}
 
-/* --- Game --- */
+/* --- Game screen: unified board layout --- */
+/*
+  Each phone is landscape, long edges touching. The board canvas fills most
+  of the screen; chrome (text + buttons) sits on the outer long edge — the
+  edge away from the seam between phones.
+  - role-bottom: chrome at the BOTTOM of the screen. Natural text orientation.
+  - role-top:    chrome at the TOP of the screen. Rotated 180° so it reads
+                 for the sitter across the table.
+*/
 
 #screen-game {
-  padding: 0.5rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
 }
 
-.game-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.4rem 0.75rem;
-  font-size: 0.9rem;
-  color: var(--ink-dim);
+#screen-game.role-bottom {
+  flex-direction: column;         /* board on top, chrome at bottom */
 }
-.turn-indicator {
-  color: var(--accent);
-  font-weight: 600;
-}
-.turn-indicator.waiting {
-  color: var(--ink-dim);
-  font-weight: 400;
+
+#screen-game.role-top {
+  flex-direction: column-reverse; /* board on bottom, chrome at top */
 }
 
 .board-wrap {
   flex: 1;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
   min-height: 0;
-  padding: 0.25rem;
+  padding: 0;
 }
 
 #board {
   display: block;
   touch-action: manipulation;
-  /* Explicit size set by JS in board.js resizeCanvas() */
+  width: 100%;
+  height: 100%;
 }
 
-.hud {
-  padding: 0.5rem 0.75rem 0.75rem;
+.chrome {
+  flex-shrink: 0;
+  padding: 0.5rem 0.75rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  align-items: center;
+  gap: 0.35rem;
+  background: var(--bg);
+  border-top: 1px solid var(--accent-dim);
 }
 
-.dice-row {
+#screen-game.role-top .chrome {
+  border-top: none;
+  border-bottom: 1px solid var(--accent-dim);
+  /* Rotate the chrome contents 180° so text reads for the far sitter. */
+  transform: rotate(180deg);
+}
+
+.chrome-row {
   display: flex;
-  gap: 0.6rem;
-  min-height: 2.5rem;
   align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
-.die {
-  width: 2.5rem;
-  height: 2.5rem;
-  background: var(--ink);
-  color: var(--bg);
-  border-radius: 6px;
-  display: grid;
-  place-items: center;
-  font-weight: 700;
-  font-size: 1.3rem;
-  box-shadow: 0 2px 0 rgba(0,0,0,0.3);
-}
-.die.used {
-  opacity: 0.35;
-  background: var(--ink-dim);
-}
-.die.rolling {
-  animation: shake 0.35s ease-out;
-}
-@keyframes shake {
-  0%   { transform: translateX(0) rotate(0); }
-  25%  { transform: translateX(-3px) rotate(-8deg); }
-  50%  { transform: translateX(3px) rotate(8deg); }
-  75%  { transform: translateX(-2px) rotate(-4deg); }
-  100% { transform: translateX(0) rotate(0); }
-}
-
-.actions {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.message {
+.chrome-label {
   color: var(--ink-dim);
-  font-size: 0.85rem;
-  text-align: center;
-  min-height: 1.2em;
-  margin: 0;
+  font-size: 0.9rem;
 }
-.message.win {
+.chrome-turn {
   color: var(--accent);
   font-weight: 600;
-  font-size: 1.1rem;
+  font-size: 1rem;
 }
 
-/* --- Status dot (top-right) --- */
+.chrome-message {
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+  margin: 0;
+}
+.chrome-message.error {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* --- Status dot --- */
 
 .status-dot {
   position: fixed;
@@ -304,11 +273,11 @@ html, body {
   z-index: 10;
   transition: background 0.3s ease;
 }
-.status-idle       { background: var(--ink-dim); opacity: 0.4; }
-.status-connecting { background: var(--warn); animation: pulse 1s ease-in-out infinite; }
-.status-connected  { background: var(--ok); }
+.status-idle         { background: var(--ink-dim); opacity: 0.4; }
+.status-connecting   { background: var(--warn); animation: pulse 1s ease-in-out infinite; }
+.status-connected    { background: var(--ok); }
 .status-reconnecting { background: var(--warn); animation: pulse 1s ease-in-out infinite; }
-.status-lost       { background: var(--danger); }
+.status-lost         { background: var(--danger); }
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.3; }
