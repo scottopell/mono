@@ -1,42 +1,48 @@
-# Backgammon Multiplayer - Technical Design
+# Backgammon — Two-Phone Unified Board — Technical Design
 
 ## Architecture Overview
 
-Static site (HTML + CSS + plain JS, no framework, no build step). Two
-devices connect via WebRTC data channel using PeerJS for signaling. The
-room creator is the **host** and owns authoritative state; the **guest**
-sends intent messages and receives state broadcasts.
+Static site, no build step. Two phones connect via the existing WebRTC data
+channel (peer.js, unchanged in structure — only the message protocol is
+extended). The two phones together render **one backgammon board**: a shared
+world coordinate system; each phone shows its half as a viewport crop.
 
 ```
-┌────────────┐                          ┌────────────┐
-│  Host      │◄──── WebRTC DataChan ───►│  Guest     │
-│  (p1)      │                          │  (p2)      │
-│            │   state snapshots →      │            │
-│            │   ← intent messages      │            │
-│  rules.js  │                          │  rules.js  │
-│  board.js  │                          │  board.js  │
-└────────────┘                          └────────────┘
-      │                                       │
-      └─── peerjs.com signaling ──────────────┘
-             (handshake only — dropped after
-              connection, no game data)
+          ┌──────────────── world ────────────────┐
+world     │  13 14 15 16 17 18 | 19 20 21 22 23 24│  ← top phone viewport
+          │                    |                   │     (points 13–24)
+          ├──────── seam (where phones touch) ────┤
+world     │  12 11 10  9  8  7 |  6  5  4  3  2  1│  ← bottom phone viewport
+          │                    |                   │     (points 1–12)
+          └───────────────────────────────────────┘
 
-      (Fallback relay: self-hosted coturn TURN
-       server, credentials in config.js)
+Each phone draws ONLY its half in shared coordinates. Chrome (text) is drawn
+in each phone's LOCAL frame and oriented for its sitter. On the top phone,
+chrome is rotated 180° so it reads correctly for the player sitting there.
 ```
 
-**Design principles:**
+### Core invariant
 
-- Authoritative state lives on exactly one side (host). No CRDT, no
-  conflict resolution. Turn-based games don't need them.
-- Rules engine is pure — `applyMove(state, move)` returns a new state or
-  rejects. Runs on both sides: guest uses it to compute legal moves
-  locally for UI; host uses it to validate intents before applying.
-- Rendering reads state; it never mutates it. Only two code paths write
-  state: host's `applyMove` (authoritative) and guest's `onStateReceived`
-  (mirror from network).
-- Board orientation is a render-time concern only. The state array is
-  always indexed the same way regardless of which player is looking.
+**The two phones are one flat board.** You could swap in a same-dimension
+physical board and each player's experience would be identical. This drives
+every choice: no per-player view transform on board graphics; shared world
+coordinates for points, checkers, dice-on-board, bar, highlights, bear-off
+strip. Only text chrome is rendered in each phone's local frame.
+
+### Authority model
+
+- **Both phones carry full game state.** Symmetric replicas, not host/guest
+  mirrors.
+- **Only the active player's phone mutates committed state.** Passive phone
+  is display-only during the opponent's turn.
+- **Commit on dice pickup:** Active phone broadcasts the full state snapshot
+  when the active player picks up their dice. This is the hard sync point.
+- **Intra-turn updates:** Active phone broadcasts lightweight display-only
+  updates (working board, selected die, highlights) during the turn so the
+  passive phone can follow along. These do not represent committed state.
+- **Tap forwarding:** Every tap on the passive phone's surface is forwarded
+  to the active phone as a world-coordinate event. The passive phone never
+  interprets taps itself.
 
 ---
 
@@ -44,25 +50,21 @@ sends intent messages and receives state broadcasts.
 
 ```
 backgammon/
-├── VISION.md               # The original design brief
-├── index.html              # Single-page entry
-├── style.css               # Board + lobby styling
-├── config.example.js       # TURN credentials template
-├── rules.js                # Pure game state + legal moves
-├── board.js                # Canvas rendering + hit-testing
-├── peer.js                 # PeerJS wrapper, host/guest, sync
-├── main.js                 # UI wiring: lobby, turn flow, state updates
-├── README.md
+├── index.html              # Two stacked canvas sections + chrome overlay
+├── style.css
+├── config.example.js       # TURN credentials template (unchanged)
+├── rules.js                # Pure game state + legal moves + move history
+├── board.js                # Shared-world rendering + per-role viewport crop
+├── dice.js                 # Commit-reveal dice protocol
+├── peer.js                 # PeerJS wrapper (unchanged connection flow,
+│                             extended message types)
+├── main.js                 # Role negotiation, move loop, tap forwarding,
+│                             intra-turn sync
 └── specs/
     ├── requirements.md
     ├── design.md
     └── executive.md
 ```
-
-`config.js` (not checked in) is loaded before `main.js` and exposes TURN
-credentials on `window.BACKGAMMON_CONFIG`. If absent, the app falls back
-to STUN-only, which works for most home networks but not symmetric-NAT
-cellular.
 
 ---
 
@@ -73,241 +75,384 @@ cellular.
   board: Array(24),            // positive = p1, negative = p2; 0 = empty
   bar: { p1: 0, p2: 0 },
   borneOff: { p1: 0, p2: 0 },
-  dice: [null, null],          // [die1, die2] once rolled; doubles expand to 4 uses
-  diceRemaining: [],           // remaining die values to play this turn
+  dice: [null, null],          // committed dice for this turn
+  diceRemaining: [],           // die values still available to play
   turn: "p1" | "p2",
-  phase: "roll" | "move" | "gameover",
+  phase: "opening" | "roll" | "move" | "gameover",
   winner: null | "p1" | "p2",
-  rollSeq: 0                   // incremented on each roll; drives UI animation
+  rollSeq: 0,                  // increments per roll; drives animation
+  moveHistory: [],             // sub-moves made this turn (for undo)
+  openingRolls: { p1: null, p2: null }  // used only during 'opening'
 }
 ```
 
-### Index convention (REQ-BG-003 board orientation)
+### Index convention
 
-- Array indices **0–23** are fixed. Index 0 is p1's "24-point" (p2's ace
-  point); index 23 is p1's ace point (p2's 24-point).
-- **P1 moves decreasing index** (from 23 toward 0, bearing off past 0).
-  P1 home = indices 0–5.
-- **P2 moves increasing index** (from 0 toward 23, bearing off past 23).
-  P2 home = indices 18–23.
-- Bar re-entry: P1 re-enters into index `24 - die` (die=1 → 23, die=6 →
-  18). P2 re-enters into index `die - 1` (die=1 → 0, die=6 → 5).
+Unchanged from the mirrored design — indices 0–23 are fixed across both
+phones. P1 moves decreasing index (home = 0–5); P2 moves increasing index
+(home = 18–23).
 
-Starting position:
+### `moveHistory` entry shape
 
-| Index | Value | Meaning                         |
-|-------|-------|---------------------------------|
-|     5 |    +5 | P1 six-point                    |
-|     7 |    +3 | P1 bar-point                    |
-|    12 |    +5 | P1 mid-point                    |
-|    23 |    +2 | P1 twenty-four-point (rear)     |
-|    18 |    -5 | P2 six-point (mirror of 5)      |
-|    16 |    -3 | P2 bar-point (mirror of 7)      |
-|    11 |    -5 | P2 mid-point (mirror of 12)     |
-|     0 |    -2 | P2 twenty-four-point (mirror)   |
+Each entry captures enough to invert the move:
 
-(Each pair sums to 23 on index, matches on absolute value, opposite sign.)
+```js
+{ from, to, die, hit }
+// from: 0..23 or 'bar'
+// to:   0..23 or 'off'
+// die:  number
+// hit:  boolean — true if this move sent an opponent checker to the bar
+```
+
+Undo pops the last entry, reverses it, and pushes the die back into
+`diceRemaining`.
+
+### Role assignment
+
+Roles are **board halves**, not player identities:
+
+```
+role ∈ { 'bottom', 'top' }
+```
+
+The bottom-phone player's `player` identity (p1 or p2) follows backgammon
+convention: whichever player has their home in the bottom half of the world.
+In our world, p1's home (indices 0–5) lives in the bottom half and p1 bears
+off at the lower-right. So **bottom phone = p1**, **top phone = p2**, always.
+This is a cosmetic choice — the rules engine is player-symmetric.
 
 ---
 
 ## Rules Engine (`rules.js`)
 
-Pure functions over state. No rendering, no network, no DOM.
-
-**Exports:**
+Pure functions. Exposes:
 
 ```
-initialState()              → state
-rollDice(state)             → state' with dice + diceRemaining
-legalMovesFrom(state, idx)  → [{to, die}]  — all legal destinations for the
-                              checker at idx given remaining dice
-applyMove(state, move)      → state' | throws if illegal
-canMove(state)              → boolean — is there any legal move at all?
-endTurn(state)              → state' with turn flipped, phase='roll',
-                              dice cleared
-checkWinner(state)          → null | "p1" | "p2"
+initialState()                  → state (phase: 'opening')
+applyOpeningRoll(state, p, v)   → state' with opening roll recorded;
+                                  may transition to 'move' with dice set
+                                  once both rolls in
+startRoll(state, dice)          → state' with given dice, phase 'move',
+                                  doubles expanded, rollSeq++
+legalMovesFrom(state, from)     → [{ to, die }]
+applyMove(state, move)          → state' (appends to moveHistory, does NOT
+                                  auto-end turn)
+undoLastMove(state)             → state' or null if no history
+canEndTurn(state)               → boolean (implements pickup gate)
+endTurn(state)                  → state' with turn flipped, phase 'roll',
+                                  history cleared
+checkWinner(state)              → null | 'p1' | 'p2'
 ```
 
-### Legal-move computation (REQ-BG-006, 007, 008)
+### Key differences from the old engine
 
-1. **If the player has a checker on the bar**, only bar re-entry moves
-   are legal. Destination must not be blocked (≥2 opponent checkers).
-2. **Otherwise, for each remaining die d**:
-   - For each point `i` with a checker of the current player:
-     - Compute `to = i - d` (p1) or `i + d` (p2).
-     - If `to` is in 0..23 and not blocked → legal.
-     - Bear off case: if `to < 0` (p1) or `to > 23` (p2) and **all** of
-       the player's checkers are in the home board, the move is legal
-       if either:
-        - `to` is exactly the board edge (die matches distance), or
-        - `to` overshoots the edge AND no checkers of this player
-          occupy higher points than `i`. (I.e., you can use a 6 to
-          bear off from the 4-point only if nothing sits on 5 or 6.)
+- **`applyMove` no longer auto-ends the turn.** The old engine would call
+  `endTurn` when `diceRemaining` emptied or no legal moves remained. The new
+  engine always returns control to the caller, who decides when to pick up.
+- **`moveHistory` enables undo.** Each `applyMove` appends; `undoLastMove`
+  pops and reverses.
+- **`canEndTurn` implements the mandatory-use rule.** Returns false when a
+  different legal sub-move sequence could have used more dice than the
+  player has actually used. The brute-force search is cheap — at most four
+  dice, at most 24 checker sources.
+- **Dice values are provided externally.** `startRoll(state, [d1, d2])`
+  accepts the dice from the commit-reveal layer rather than rolling them
+  internally. This keeps rules pure and lets tests inject deterministic
+  dice.
 
-### Doubles
+### Pickup-gate algorithm (`canEndTurn`)
 
-On a double roll, `diceRemaining` has four entries of the same value.
-Each used die is removed one at a time via `applyMove`.
+```
+function maxPlayable(state):
+  if no legal move: return 0
+  best = 0
+  for each legal move m:
+    s' = applyMove(state, m)
+    best = max(best, 1 + maxPlayable(s'))
+  return best
 
-### Forced-use rule (REQ-BG-009)
+canEndTurn(state) = moveHistory.length >= maxPlayable(stateAtTurnStart)
+```
 
-Standard backgammon: if only one die can be played, the higher must be
-played. We enforce the softer version: after each move, recompute legal
-moves; if none remain for *any* die, auto-advance to the next phase
-(turn end). We document the higher-die rule but don't enforce the
-"must use higher if only one playable" corner case in v1 — it's rarely
-contested in casual home play and would add meaningful complexity. Flag
-for v2.
+`stateAtTurnStart` is reconstructed by undoing all moves in history, or
+equivalently memoized when the turn starts.
 
 ---
 
 ## Rendering (`board.js`)
 
-HTML5 Canvas 2D. Single function `renderBoard(ctx, state, perspective)`
-where `perspective` is `"p1"` or `"p2"`.
+### World coordinate system
 
-Layout (CSS logical pixels; canvas uses devicePixelRatio scaling):
+Board world is a rectangle. Origin at top-left of the world. Width × Height
+arbitrary — CSS sizes the canvas, board.js scales into it. For simplicity:
 
-- Board aspect ratio ~ 1.4:1 (wider than tall).
-- Twelve points per row; bar in the middle splits each row 6-6.
-- Point triangles alternate light/dark, drawn with plain fills.
-- Bar is a vertical strip in the center holding hit checkers.
-- Right-side tray holds borne-off checkers.
+```
+world = { width: W, height: H }
+H = 2 * halfH
+bottom half (world y in [halfH, H]) holds points 1–12 (indices 0–11)
+top half    (world y in [0, halfH])  holds points 13–24 (indices 12–23)
+seam at y = halfH
+```
 
-### Perspective flip (REQ-BG-003)
+Within each half, points are arranged left-to-right in the standard
+backgammon layout: outer board, bar, home board. The bar is a vertical
+strip at the world's horizontal middle; the bear-off tray sits beyond the
+home board's outer edge.
 
-Conceptually: the board stored in state has point 0 at the top-left
-(p1's far corner). For the p1 player, we render:
+### Point-to-world mapping
 
-- Bottom row: indices 0 → 11 (left-to-right in visual terms: 11 → 0
-  actually, since p1 bears off at the bottom-right).
-- Top row: indices 23 → 12.
+Each of the 24 points maps to an anchor in world coordinates:
 
-For p2, we mirror: bottom row = indices 12 → 23, top row = indices 11
-→ 0. Checker colors swap (p2's perspective shows p2's own checkers at
-the bottom moving up).
+```
+pointAnchor(idx)
+  -> { x, y, tipY, half: 'top'|'bottom' }
+```
 
-The mapping is encapsulated in `pointScreenPosition(idx, perspective)`
-returning `{quadrant, slot, anchor}` where `anchor` is the base of the
-triangle to stack checkers from.
+Standard convention: point 1 (index 0) is p1's ace, bottom-right of the
+board. Point 24 (index 23) is p1's 24-point, top-right. Our world mirrors
+that layout.
 
-### Interaction (REQ-BG-005)
+### Viewport crop
 
-`hitTestPoint(x, y, perspective)` returns a board index or `"bar"` or
-`null`. `main.js` owns the selection state — it's UI, not game state,
-and doesn't get synced. When a point is selected:
+`renderBoard(ctx, state, role, uiState)` draws only its half:
 
-1. Compute `legalMovesFrom(state, idx)`.
-2. Highlight destinations.
-3. On tap of a highlighted destination, dispatch a move intent.
+- `role === 'bottom'`: world's bottom half (y in [halfH, H]) mapped to the
+  full canvas.
+- `role === 'top'`: world's top half (y in [0, halfH]) mapped to the full
+  canvas.
 
-### Checker stacking
+Because points, checkers, highlights, and dice are all drawn from world
+coordinates, no per-phone board flip is needed — each phone just clips to
+its half.
 
-Up to five checkers render as full-size. Stacks of 6+ render as a
-compressed stack with a count label.
+### Chrome orientation
+
+Chrome (player names, pip counts, turn indicator, unusable-die labels,
+pickup prompt) is **not** on the canvas. It's HTML DOM overlaid on the
+viewport, positioned on the outer long edge:
+
+- **Bottom phone:** chrome on the bottom edge of the screen (far from the
+  seam). Text reads in the device's natural orientation.
+- **Top phone:** chrome on the top edge of the screen (far from the seam).
+  Text is `transform: rotate(180deg)` so it reads correctly for the sitter
+  across the table.
+
+Using DOM for chrome keeps rotation trivial (one CSS transform) and gives
+us ordinary text rendering + tap targets for the pickup button.
+
+### Dice rendering
+
+Dice render on the active player's home quadrant in **shared world
+coordinates** — both phones draw them if the quadrant straddles the seam,
+or only one phone draws them if they sit entirely within that phone's half.
+Since the home quadrant of each player sits entirely within one half, only
+that phone actually draws them. But both phones compute the same world
+position, which is what matters.
+
+Dice are **only interactive** (receive tap events and change selection) on
+the active player's phone. Cross-phone tap forwarding means a passive-phone
+tap on dice is forwarded and ignored (not active → reject).
+
+### Bear-off strip
+
+When the active player's 15 checkers are all in their home quadrant, the
+bear-off strip renders along the outer short edge of that quadrant. In
+world coordinates, this is the vertical strip beyond the home board, on
+the active player's side (right for p1, right for p2 — standard). It
+renders on the phone that owns that half only.
+
+### Hit-testing
+
+`hitTest(x, y, role)` converts a device-local (canvas pixel) tap into a
+world-coordinate target:
+
+```
+hitTest returns one of:
+  { kind: 'point', idx: 0..23 }
+  { kind: 'bar' }
+  { kind: 'bearOff' }
+  { kind: 'die', index: 0..3 }      // which die was tapped
+  { kind: 'world', x, y }            // for forwarding — raw world coords
+  null
+```
+
+Each phone's hit test covers its half only. A tap that falls in the
+viewport is first resolved against interactive targets (points, bar, dice,
+bear-off strip). A tap that doesn't resolve to a known target is forwarded
+as raw world coords to the active phone, which re-runs its own hit test
+in world space.
 
 ---
 
-## Peer Connection (`peer.js`)
+## Commit-Reveal Dice (`dice.js`)
 
-Wrapper around PeerJS that abstracts the host/guest asymmetry behind a
-single event-emitting object.
+Goal: neither phone can bias the dice, and any tampering is detectable.
 
-**Exports:**
+### Protocol
+
+For each roll (opening-roll-one-die or turn-roll-two-dice):
+
+1. **Generate secret.** Each phone picks a 256-bit random secret + 128-bit
+   salt.
+2. **Commit.** Each phone sends `commit = SHA-256(secret || salt)` to the
+   other. Until both commits are in, no reveal happens.
+3. **Reveal.** Each phone sends `(secret, salt)` once it has received the
+   other's commit.
+4. **Verify.** Each phone checks the other's `SHA-256(secret || salt) ===
+   commit`. Mismatch → session ends with a cheating signal (REQ-UB-005).
+5. **Combine.** `combined = secret_bottom XOR secret_top`. Pass through
+   `HMAC-SHA-256(combined, "roll:" || turnCounter || ":" || purpose)` for
+   domain separation.
+6. **Derive.** Take successive bytes of the HMAC output mod 6, add 1. Each
+   byte gives one die value. Opening roll needs one value per side (each
+   side runs the protocol independently for their own die); turn roll
+   needs two; doubles expand to four uses after derivation, no extra
+   protocol step.
+
+### State machine
 
 ```
-createHost({ onGuestJoined, onIntent, onStatus }) → { peerId, send }
-joinAsGuest(roomCode, { onState, onStatus })     → { send }
+idle ──roll-requested──▶ committed ──both-commits-received──▶ revealed
+                                                                   │
+                                                          verify ok│verify-fail
+                                                                   ▼
+                                                                 done / aborted
 ```
 
-`peerId` / `roomCode` is the short code from REQ-BG-001. We use PeerJS's
-custom-peer-id feature: generate a 6-char code from a curated alphabet
-(`ABCDEFGHJKLMNPQRSTUVWXYZ23456789` — no I/L/O/0/1) and try to claim it
-as our peer ID. On collision (very unlikely at two-people scale), retry.
+### Storage
 
-**Message envelope:**
+`dice.js` holds per-roll state in a small in-memory object. No persistence
+— a mid-roll disconnect aborts the roll and falls back to "pick up the
+dice, start a new turn" handling.
 
-```js
-// Host → Guest
-{ type: "state", state: <full state object> }
+### Fallback for solo / local mode
 
-// Guest → Host
-{ type: "intent", intent: "roll" }
-{ type: "intent", intent: "move", from: <idx|"bar">, to: <idx|"off"> }
-{ type: "intent", intent: "endTurn" }
+Local hotseat (single device, for debugging) skips the protocol entirely
+and just calls `Math.random()`. This path is explicit — guarded by
+`role === 'local'` — not an automatic degradation.
+
+---
+
+## Peer Messaging (`peer.js`)
+
+Connection flow is unchanged (host creates room with code; guest joins by
+code). The existing `send` / `onData` plumbing carries the new message
+types.
+
+### Message envelope types
+
+```
+// Role announce (first message each phone sends after connection opens)
+{ type: 'hello', role: 'bottom' | 'top' }
+
+// Tap forwarded from passive to active (world coordinates)
+{ type: 'tap', x: number, y: number }
+
+// Intra-turn update — active phone → passive phone
+{ type: 'live', state: <partial snapshot>, selectedDie: 0..3 | null }
+
+// Commit-reveal
+{ type: 'diceCommit', commit: <hex>, purpose: 'opening' | 'turn', turn: n }
+{ type: 'diceReveal', secret: <hex>, salt: <hex>, purpose, turn }
+
+// Commit — active phone → passive phone, on dice pickup
+{ type: 'commit', state: <full snapshot> }
+
+// Session control
+{ type: 'abort', reason: string }
 ```
 
-Host broadcasts after every state mutation. Guest is pure mirror — it
-only renders state it receives. Guest computes legal moves locally for
-UI responsiveness (no round-trip to highlight destinations) but actual
-mutations are round-tripped.
+`<partial snapshot>` for intra-turn updates includes `board`, `bar`,
+`borneOff`, `diceRemaining`, `moveHistory`. It does **not** include
+`turn` or `phase` — those only change at commit.
 
-### TURN fallback (REQ-BG-011 resilience)
+`<full snapshot>` at commit includes everything in the state model.
 
-PeerJS's `config.iceServers` accepts our TURN URL and credential. We
-pass the TURN config unconditionally; WebRTC picks the best candidate
-pair automatically (direct UDP preferred, TURN relay fallback).
+### Role negotiation
 
-### Reconnection (REQ-BG-011)
-
-PeerJS emits `disconnected` on signaling loss and `close` on data
-channel loss. On either, we:
-
-1. Show "reconnecting" in the status indicator.
-2. Attempt `peer.reconnect()` (preserves peer ID).
-3. On reconnection, the host re-broadcasts current state; the guest
-   re-renders from it.
-
-If reconnect fails after 3 attempts, we show "connection lost" and
-offer a "rejoin with code" button that re-runs the full connection
-flow. Game state is preserved on the host side regardless.
+Both phones send `hello` after the connection opens. If both claim the
+same role, the host wins (its role stands); guest re-claims the other.
+Host defaults to `bottom`, guest defaults to `top`. First-boot conflict
+is vanishingly rare — the default roles don't collide.
 
 ---
 
 ## UI Wiring (`main.js`)
 
-Three top-level screens controlled by a simple mode variable:
-
-- `mode = "lobby"` — initial. "New Game" and "Join by Code" controls.
-- `mode = "waiting"` — host has a code, guest hasn't connected yet.
-  Shows the code and a copyable display.
-- `mode = "playing"` — game is live. Shows board + dice + controls.
-
-**Turn flow (host side):**
+### Screen state
 
 ```
-  applyIntent(intent)
-    ↓
-  validate with rules.legalMovesFrom / rules.applyMove
-    ↓
-  mutate state
-    ↓
-  if checkWinner → phase = "gameover"
-  else if diceRemaining.empty or no legal moves → endTurn()
-    ↓
-  broadcast state to guest
-    ↓
-  re-render locally
+mode ∈ { 'lobby', 'waiting', 'opening-roll', 'playing', 'gameover' }
 ```
 
-**Guest side is strictly:**
+### Turn flow
 
 ```
-  user tap → send intent → wait → receive state → render
+opening-roll phase
+  - both phones run commit-reveal for one die each
+  - higher-roller's phone becomes active, uses both values as first turn
+  - equal values → re-roll
+
+playing phase — active player
+  1. tap 'Roll' button (in chrome) → commit-reveal protocol for two dice
+  2. dice land, phase → move
+  3. tap die → highlights; tap destination → applyMove (local) + live broadcast
+  4. tap moved checker → undoLastMove (local) + live broadcast
+  5. repeat 3–4 until done
+  6. tap 'Pick up dice' button (in chrome) → canEndTurn gate → endTurn +
+     commit broadcast → both phones update committed state → turn passes
+
+playing phase — passive player
+  - receives live updates, renders in-progress board
+  - local taps forwarded to active as { type: 'tap', x, y } in world coords
+  - active phone ignores forwarded taps that would violate turn authority
+    (extra safety; passive phone also knows not to act locally)
 ```
+
+### Tap pipeline
+
+Every pointer event on the passive phone:
+
+```
+device (x, y) → canvas-local → world-coord conversion (via role's viewport)
+              → if on the device's own half, forward as { tap, wx, wy }
+              → active phone receives, re-runs hit-test against world coords,
+                dispatches as if tapped locally
+```
+
+Active phone's own local taps skip forwarding and go straight to the
+dispatcher.
+
+### Selection & undo
+
+Selection state lives only on the active phone:
+
+```
+selection = {
+  die: 0..3 | null,       // which die is selected
+  // source is inferred from (die, destination) since direction is fixed
+}
+```
+
+Undo: tap a board point whose top checker is the most recent move's target.
+Runs `undoLastMove`. Easier variant: undo the most recent sub-move whenever
+the player taps any moved checker (we only support last-first undo — stack
+discipline is fine for v1).
 
 ---
 
-## Error Handling Strategy
+## Error Handling
 
-- **Invalid move attempts:** `applyMove` throws; host catches, ignores,
-  and rebroadcasts current state (guest UI self-corrects).
-- **Malformed network messages:** Logged to console, dropped. Not
-  user-facing — protocol is internal.
-- **PeerJS errors:** Surfaced to the status indicator. Three retry
-  attempts then full restart.
-- **Missing TURN config:** App still starts (`BACKGAMMON_CONFIG`
-  undefined → STUN only). Console warning logged.
+- **Commit-reveal mismatch:** abort session with visible banner
+  ("Dice integrity check failed — session ended"). Do not recover.
+- **Out-of-turn intent:** active phone silently ignores taps forwarded
+  from the passive phone when it is not the active player. Passive phone
+  ignores its own locally-resolved intents for the same reason.
+- **Illegal move attempt:** `applyMove` throws; active phone catches and
+  broadcasts current live state so passive phone re-syncs.
+- **Connection drop:** existing reconnect logic in peer.js handles this
+  (3 attempts with backoff); on reconnect, the active player re-broadcasts
+  live state.
 
 ---
 
@@ -315,52 +460,59 @@ Three top-level screens controlled by a simple mode variable:
 
 ### Rules engine
 
-`rules.js` is pure; it can be exercised directly from a test harness
-page (`test.html`) or browser devtools. Target coverage:
+Pure, testable in isolation:
 
-- Initial state is the canonical starting position.
-- All standard openings produce expected `legalMovesFrom` outputs.
-- Bar re-entry blocks other moves until bar is empty.
-- Bearing off respects the "overshoot only from the highest point"
-  rule.
-- Hit-the-blot correctly moves opponent to bar.
-- Doubles produce four uses; all four must be used if legal.
-- Winner detected when 15 checkers borne off.
+- `applyMove` does not auto-end; `moveHistory` accumulates.
+- `undoLastMove` is an exact inverse of `applyMove` (round-trip
+  property test).
+- `canEndTurn` returns false when a longer legal sequence exists.
+- Doubles produce four dice in `diceRemaining`.
+- Bear-off legal only when home is full; overshoot-from-highest rule.
 
-### Integration / manual
+### Commit-reveal
 
-Two-browser test: open the app in two tabs (or two devices), create a
-room on one, join from the other. Play a few full turns, confirm
-perspective flip, confirm hits and bearing off animate on both sides.
+- Deterministic test with fixed secrets/salts — expected derived dice.
+- Tampering test — one side sends wrong reveal → verification fails.
 
-### Perspective flip
+### Rendering
 
-Visual inspection: with a known state, render p1 and p2 perspectives
-side-by-side; verify that what's "bottom-right home board" on p1 is
-the "top-left opponent's home" on p2.
+- Visual inspection: place two phones long-edges-touching, confirm seam
+  looks continuous.
+- Test harness: single-canvas debug view that renders the whole world for
+  comparison with the split-phone view.
 
----
+### Integration
 
-## Security Considerations
-
-- **TURN credentials in static JS:** Acceptable for a private app — the
-  credentials only authorize relay use, not access to anything
-  sensitive. `config.js` is gitignored to keep them out of the public
-  repo; a committed `config.example.js` documents the shape.
-- **No user input reaches the server:** All game logic is client-side;
-  peerjs.com sees only WebRTC handshake metadata.
-- **Trust model:** Both players are assumed to be cooperating. No
-  cheat-resistance — the host could lie about dice rolls, but the use
-  case is two people playing together, not adversarial play.
+- Two-browser test: run on two tabs sized like phone viewports;
+  bottom-phone tab plays through a full turn, confirm top-phone tab
+  follows via live updates; pick up dice; confirm commit.
 
 ---
 
-## Performance Considerations
+## Security & Trust
 
-- State objects are small (<200 bytes serialized). Broadcasting every
-  state change is cheap.
-- Canvas rendering is straightforward; redraw on state change, not per
-  frame. Target: 60fps on mid-range phones for the dice roll animation,
-  instant redraw on move.
-- TURN relay round-trip adds ~50–200ms depending on location. Turn-based
-  play hides this entirely; no perceptible latency for players.
+- Commit-reveal on dice is the only adversarial protection. The rest of
+  the game assumes cooperating players (a rogue active phone could
+  broadcast an illegal state, but no mechanism polices board state — v1
+  trusts the active phone for state, policed only by visual inspection).
+- TURN credentials remain in `config.js` as before.
+
+---
+
+## Performance
+
+- Full state is small (<300 bytes serialized). Commit broadcasts are
+  trivial; live updates are similar.
+- Canvas redraws on state change, not per frame.
+- Tap forwarding adds one data-channel round-trip (~5–50ms on same-network
+  WebRTC, up to 200ms over TURN relay). Players notice this on cross-seam
+  taps only; within-phone taps are local and instant.
+
+---
+
+## Out of Scope
+
+- Doubling cube, match play, Crawford/Jacoby rules — single games only.
+- Animations beyond what's needed for clarity.
+- Accessibility beyond reasonable tap target sizes.
+- Any change to the existing pairing / signaling / data channel setup.
