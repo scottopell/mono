@@ -46,6 +46,7 @@
     lobbyError: document.getElementById('lobby-error'),
     roomCodeDisplay: document.getElementById('room-code-display'),
     btnCancelHost: document.getElementById('btn-cancel-host'),
+    btnShare: document.getElementById('btn-share'),
     canvas: document.getElementById('board'),
     gameRoot: document.getElementById('screen-game'),
     chromeLabel: document.getElementById('chrome-label'),
@@ -119,6 +120,27 @@
       },
     });
   }
+
+  // Share the room code via the native share sheet if available; fall back
+  // to copying to clipboard and flashing a "Copied!" confirmation.
+  el.btnShare.addEventListener('click', async () => {
+    if (!app.peerApi || !app.peerApi.code) return;
+    const code = app.peerApi.code;
+    const url = window.location.origin + window.location.pathname;
+    const text = `Join my backgammon game — code ${code}`;
+    if (navigator.share) {
+      try { await navigator.share({ title: 'Backgammon', text, url }); return; }
+      catch (_) { /* user cancelled or share failed; fall through to copy */ }
+    }
+    if (navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(`${text}\n${url}`);
+        const prev = el.btnShare.textContent;
+        el.btnShare.textContent = 'Copied!';
+        setTimeout(() => { el.btnShare.textContent = prev; }, 1500);
+      } catch (_) {}
+    }
+  });
 
   el.btnCancelHost.addEventListener('click', () => {
     if (app.peerApi) app.peerApi.close();
@@ -431,11 +453,7 @@
     board.renderBoard(ctx, app.state, currentRole(), ui);
   }
 
-  function currentRole() {
-    // In local hotseat, render bottom-phone view (full board would be more
-    // useful; TODO). For now it matches the bottom layout.
-    return app.role === 'local' ? 'bottom' : app.role;
-  }
+  function currentRole() { return app.role; }
 
   function computeUiHighlights() {
     const s = app.state;
@@ -705,6 +723,17 @@
 
   window.addEventListener('resize', resizeAndRender);
   window.addEventListener('orientationchange', resizeAndRender);
+
+  // Show the deploy SHA in the lobby footer. In dev (or if the workflow
+  // substitution didn't run) the placeholder lingers — replace it with
+  // "dev". On deploy the sha is 40 chars; show the first 7.
+  (function showDeploySha() {
+    const shaEl = document.getElementById('deploy-sha');
+    if (!shaEl) return;
+    const raw = (shaEl.textContent || '').trim();
+    if (!raw || raw === '__DEPLOY_SHA__') shaEl.textContent = 'dev';
+    else if (/^[0-9a-f]{40}$/i.test(raw)) shaEl.textContent = raw.slice(0, 7);
+  })();
 
   // --- Boot ---
 

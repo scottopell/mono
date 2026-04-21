@@ -111,6 +111,14 @@ jobs:
               print(f"✓ Copied static site: {name}")
           PYTHON_SCRIPT
 
+      - name: Inject build metadata
+        # Substitute __DEPLOY_SHA__ placeholders in any HTML file under
+        # _site/ with the current commit sha. Sites that don't use the
+        # placeholder are unaffected.
+        run: |
+          find _site -name '*.html' -type f -print0 \
+            | xargs -0 sed -i "s|__DEPLOY_SHA__|${{ github.sha }}|g"
+
       - name: Generate index page
         run: |
           python3 << 'PYTHON_SCRIPT'
