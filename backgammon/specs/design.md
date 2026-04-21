@@ -137,7 +137,9 @@ startRoll(state, dice)          → state' with given dice, phase 'move',
 legalMovesFrom(state, from)     → [{ to, die }]
 applyMove(state, move)          → state' (appends to moveHistory, does NOT
                                   auto-end turn)
-undoLastMove(state)             → state' or null if no history
+undoLastMove(state)             → state' with last sub-move reversed;
+                                  returns the original state unchanged
+                                  when moveHistory is empty
 canEndTurn(state)               → boolean (implements pickup gate)
 endTurn(state)                  → state' with turn flipped, phase 'roll',
                                   history cleared
@@ -349,7 +351,7 @@ types.
 { type: 'tap', x: number, y: number }
 
 // Intra-turn update — active phone → passive phone
-{ type: 'live', state: <partial snapshot>, selectedDie: 0..3 | null }
+{ type: 'live', state: <full snapshot>, selectedDie: 0..3 | null }
 
 // Commit-reveal
 { type: 'diceCommit', commit: <hex>, purpose: 'opening' | 'turn', turn: n }
@@ -362,11 +364,14 @@ types.
 { type: 'abort', reason: string }
 ```
 
-`<partial snapshot>` for intra-turn updates includes `board`, `bar`,
-`borneOff`, `diceRemaining`, `moveHistory`. It does **not** include
-`turn` or `phase` — those only change at commit.
-
-`<full snapshot>` at commit includes everything in the state model.
+Both `live` and `commit` carry a full serialized state for simplicity —
+backgammon state is <300 bytes serialized, so the bandwidth win from a
+trimmed intra-turn payload isn't worth maintaining two serialize paths.
+The commit-vs-live distinction is in the semantics, not the payload:
+`live` is display-only on the passive side, and the receiver enforces
+turn authority by dropping any `live` message whose `turn` field equals
+its own player id (active → passive direction only). `commit` is the
+only message allowed to replace the receiver's committed state.
 
 ### Role negotiation
 

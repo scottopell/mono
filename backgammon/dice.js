@@ -161,6 +161,13 @@
       if (msg.purpose !== purpose || msg.turn !== turn) {
         return abort('commit purpose/turn mismatch');
       }
+      // Both sides must agree on how many dice this session produces;
+      // otherwise we'd happily verify and then desync on the derivation.
+      if (msg.count !== count) return abort('commit count mismatch');
+      // SHA-256 hex = 64 lowercase/uppercase hex chars.
+      if (typeof msg.commit !== 'string' || !/^[0-9a-fA-F]{64}$/.test(msg.commit)) {
+        return abort('malformed commit');
+      }
       if (remoteCommit) return abort('duplicate commit');
       remoteCommit = msg.commit;
       // If we already committed, we can reveal now.
@@ -180,6 +187,12 @@
         salt = hexToBytes(msg.salt);
       } catch (e) {
         return abort('bad reveal bytes');
+      }
+      // Enforce sizes so a peer can't quietly reduce entropy by revealing
+      // a shorter secret than they committed to. xorBytes() would otherwise
+      // silently truncate to the shorter input.
+      if (secret.length !== 32 || salt.length !== 16) {
+        return abort('bad reveal size');
       }
       remoteReveal = { secret, salt };
       if (state === 'revealed') finish();
