@@ -85,6 +85,14 @@
   const BACKGROUND_SCAR_DAMAGE_MIN = 1.5;             // smaller than fault auto-resolve damage (3-10)
   const BACKGROUND_SCAR_DAMAGE_MAX = 4;               // intentionally smaller — these are ambient, not headline events
 
+  // PR 3: sacrifice mode — when Will is depleted (< RELEASE_COST), old
+  // features (from previous epochs) become spendable. Tapping one shifts
+  // the highest-maturity active event's spawnedAt forward, buying time at
+  // the real cost of erasing the feature from the map.
+  const SACRIFICE_NUDGE_PER_QUALITY_MS = 4 * 1000;   // each unit of feature.quality buys 4 seconds
+  const SACRIFICE_NUDGE_MAX_FRAC = 0.5;              // cap nudge at 50% of event's lifetime
+  const SACRIFICE_TAP_SNAP_RADIUS = 0.10;            // smaller than EVENT_TAP_SNAP_RADIUS (0.18) — features are smaller targets
+
   // Law V tuning — density is now 2D, measured at the actual release point
   const DENSITY_SIGMA = 0.3;         // fraction of planet radius — how wide each fault's influence spreads
   const DENSITY_SCARRING_CAP = 1.5;  // saturation point for "how scarred" this area is
@@ -403,6 +411,73 @@
       if (d2 < bestD2) { best = event; bestD2 = d2; }
     }
     return best;
+  }
+
+  // PR 3: sacrifice mode helpers.
+  //
+  // A feature is sacrificable if it was born in a *previous* epoch — the
+  // player can spend the autobiography of an older self to buy time now.
+  // Current-epoch features stay protected so this turn's gains don't get
+  // eaten by this turn's panic.
+  function isSacrificable(feature) {
+    return feature.bornInEpoch < state.epoch;
+  }
+
+  // Mirror of findEventNearPoint, but searches sacrificable features
+  // within a tighter radius (features are smaller targets than events).
+  function findSacrificableNear(px, py) {
+    let best = null, bestD2 = SACRIFICE_TAP_SNAP_RADIUS * SACRIFICE_TAP_SNAP_RADIUS;
+    for (const f of state.features) {
+      if (!isSacrificable(f)) continue;
+      const dx = f.x - px, dy = f.y - py;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) { best = f; bestD2 = d2; }
+    }
+    return best;
+  }
+
+  // Pick the active event closest to rupturing — the one a panicking
+  // player most wants nudged back. v1 simplification of the spec's
+  // two-tap (feature + target) interaction: auto-target the worst
+  // imminent thing.
+  function mostMatureActiveEvent() {
+    let best = null, bestM = -Infinity;
+    for (const event of state.events) {
+      if (event.status !== 'active') continue;
+      const m = eventMaturity(event);
+      if (m > bestM) { best = event; bestM = m; }
+    }
+    return best;
+  }
+
+  // Spend a feature to nudge the most-mature active event back. The
+  // event's effective age is younger-ified by shifting its spawnedAt
+  // forward in time (the same trick PR 4's planned "terrain rebake" will
+  // use — we modify effective age, not position or kind). Returns true
+  // on success, false if there's nothing to nudge (so the caller can
+  // decline the sacrifice rather than silently consuming the feature).
+  function sacrificeFeature(feature) {
+    const target = mostMatureActiveEvent();
+    if (!target) return false;
+    const nudgeMs = Math.min(
+      feature.quality * SACRIFICE_NUDGE_PER_QUALITY_MS,
+      target.lifetime * SACRIFICE_NUDGE_MAX_FRAC,
+    );
+    target.spawnedAt = target.spawnedAt + nudgeMs;
+    state.features = state.features.filter(f => f !== feature);
+    pushLog({
+      ageTicks: state.ageTicks,
+      sacrifice: true,
+      quality: feature.quality,
+      nudgeSeconds: nudgeMs / 1000,
+    });
+    state.lastResolution = {
+      x: feature.x, y: feature.y,
+      kind: 'sacrifice',
+      delta: -feature.quality,            // negative — we lost the quality contribution
+      bornAt: performance.now(),
+    };
+    return true;
   }
 
   // Resolve an active event into a TerrainFeature using a charge tier.
@@ -759,6 +834,9 @@
       }
       if (e.scarred) {
         return `<li><span class="age">${formatAge(e.ageTicks)}</span>Event ruptured → <span class="bad">+${e.damage.toFixed(1)} damage</span></li>`;
+      }
+      if (e.sacrifice) {
+        return `<li><span class="age">${formatAge(e.ageTicks)}</span>Sacrificed feature → bought ${e.nudgeSeconds.toFixed(0)}s of breathing room</li>`;
       }
       return '';
     }).filter(Boolean).join('');
@@ -1138,11 +1216,28 @@
   // Static (no animation) — features are persistent geology.
   function drawFeatures() {
     const { cx, cy, r } = view;
+    // PR 3: in sacrifice mode (Will depleted), old features get a
+    // dotted pulsing halo so the player can SEE which pieces of their
+    // autobiography are spendable right now.
+    const inSacrificeMode = state.influence < RELEASE_COST;
     ctx.save();
     ctx.lineCap = 'round';
     for (const f of state.features) {
       const px = cx + f.x * r;
       const py = cy + f.y * r;
+
+      if (inSacrificeMode && isSacrificable(f)) {
+        const breath = 0.65 + 0.35 * Math.sin(performance.now() / 700);
+        ctx.save();
+        ctx.strokeStyle = `rgba(245, 130, 110, ${0.7 * breath})`;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 5]);
+        ctx.beginPath();
+        ctx.arc(px, py, SACRIFICE_TAP_SNAP_RADIUS * view.r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
 
       if (f.kind === 'BasaltPatch') {
         // Filled dome — a circle, NOT a line. Quality scales the radius
@@ -1288,13 +1383,18 @@
     const px = cx + lr.x * r;
     const py = cy + lr.y * r;
     const handled = lr.kind === 'handled';
+    const sacrificed = lr.kind === 'sacrifice';
 
     ctx.save();
 
-    // Expanding ring — warm tan for handled releases, dark red for ruptures
+    // Expanding ring — warm tan for handled releases, warm pink-red for
+    // sacrifices (visually distinct from both gain and rupture), dark
+    // red for ruptures.
     const ringColor = handled
       ? `rgba(245, 220, 180, ${0.85 * life})`
-      : `rgba(220, 80, 60, ${0.8 * life})`;
+      : sacrificed
+        ? `rgba(245, 130, 110, ${0.85 * life})`
+        : `rgba(220, 80, 60, ${0.8 * life})`;
     ctx.strokeStyle = ringColor;
     ctx.lineWidth = 2.5;
     ctx.beginPath();
@@ -1320,7 +1420,9 @@
     }
     ctx.fillStyle = handled
       ? `rgba(140, 230, 160, ${textAlpha})`
-      : `rgba(245, 110, 95, ${textAlpha})`;
+      : sacrificed
+        ? `rgba(245, 175, 145, ${textAlpha})`
+        : `rgba(245, 110, 95, ${textAlpha})`;
     ctx.fillText(txt, tx, ty);
 
     ctx.restore();
@@ -1426,11 +1528,18 @@
     const activeEvents = state.events.filter(e => e.status === 'active');
     const ripeEvent = activeEvents.find(e => eventMaturity(e) >= 0.85);
     const noEvents = activeEvents.length === 0;
+    const inSacrificeMode = state.influence < RELEASE_COST;
+    const hasSacrificable = state.features.some(isSacrificable);
+    const hasActiveEvent = activeEvents.length > 0;
 
     els.hint.classList.toggle('ready', ready && !ripeEvent);
+    // .urgent is intentionally suppressed in sacrifice mode — the
+    // sacrifice copy has its own mood.
     els.hint.classList.toggle('urgent', !!ripeEvent);
 
-    if (ripeEvent && ready) {
+    if (inSacrificeMode && hasSacrificable && hasActiveEvent) {
+      els.hint.textContent = 'will depleted — tap an old feature to sacrifice it and nudge an event back';
+    } else if (ripeEvent && ready) {
       els.hint.textContent = 'an event is cresting — tap before it ruptures';
     } else if (ripeEvent) {
       const pct = Math.floor((state.influence / RELEASE_COST) * 100);
@@ -1503,6 +1612,21 @@
   }
 
   function resolveTap(px, py, tier) {
+    // Sacrifice mode: when Will is below the Normal-tier cost, the player
+    // can't afford a release — but they CAN spend a feature from a prior
+    // epoch to nudge an event back. Routes BEFORE the !tier guard
+    // because tierFromHold returns null in this regime (no affordable
+    // tier), and we need that null to fall through to the sacrifice
+    // path instead of bailing.
+    //
+    // No fallthrough to event-handling: in sacrifice mode the player has
+    // no Will, so handleEvent would no-op anyway. Keeping the path
+    // explicit avoids confusion.
+    if (state.influence < RELEASE_COST) {
+      const f = findSacrificableNear(px, py);
+      if (f) return sacrificeFeature(f);
+      return null;
+    }
     if (!tier) return null;            // shouldn't happen — tierFromHold guards
     const event = findEventNearPoint(px, py);
     if (!event) return null;            // tap missed any event
