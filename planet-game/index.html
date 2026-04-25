@@ -11,10 +11,10 @@
   <main>
     <header>
       <h1>Planet</h1>
-      <p class="tagline">You are the planet. Time passes through you. Pressure builds. You choose <em>when</em> and <em>where</em> to let it go — never <em>if</em>.</p>
+      <p class="tagline">You are the planet. Tap is being rewritten — events arrive in the next phase.</p>
     </header>
 
-    <section class="stage" role="button" aria-label="Tap to focus the pressure and let it go here">
+    <section class="stage" role="button" aria-label="Planet surface">
       <canvas id="planet" aria-label="your surface, seen from above"></canvas>
     </section>
 
@@ -24,14 +24,6 @@
       <div class="gauge">
         <label>Stability <span class="gauge-desc">— how settled you feel. 100 ends the epoch</span><span id="stability-val">50</span></label>
         <div class="bar bar-stability"><div id="stability-fill"></div><div class="goal-mark" title="era threshold"></div></div>
-      </div>
-      <div class="gauge">
-        <label>Pressure <span class="gauge-desc">— tectonic stress. erupts on its own at 100</span><span id="pressure-val">0</span></label>
-        <div class="bar bar-pressure"><div id="pressure-fill"></div></div>
-      </div>
-      <div class="gauge">
-        <label>Volcanic <span class="gauge-desc">— heat beneath. vents through hotspots in scarred crust</span><span id="volcanic-val">0</span></label>
-        <div class="bar bar-volcanic"><div id="volcanic-fill"></div></div>
       </div>
       <div class="gauge">
         <label>Will <span class="gauge-desc">— your capacity to act. 10 per deliberate release</span><span id="influence-val">0</span></label>
@@ -57,35 +49,7 @@
       <details class="help-details">
         <summary>How it works</summary>
         <div class="help-grid">
-          <div class="help-row">
-            <span class="help-swatch swatch-ridge"></span>
-            <span><strong>Ridge</strong> — a steady release. Lifted into your crust.</span>
-          </div>
-          <div class="help-row">
-            <span class="help-swatch swatch-canyon"></span>
-            <span><strong>Canyon</strong> — a rough release. Carved into your crust.</span>
-          </div>
-          <div class="help-row">
-            <span class="help-swatch swatch-eruption"></span>
-            <span><strong>Eruption</strong> — pressure reached 100 and let go without you. You don't choose where.</span>
-          </div>
-          <div class="help-row">
-            <span class="help-swatch swatch-scarring"></span>
-            <span><strong>Scarring</strong> — yellow/red halo where your faults cluster. Tectonic releases here widen the swing and bias it rough — but they also fuel volcanic pressure.</span>
-          </div>
-          <div class="help-row">
-            <span class="help-swatch swatch-hotspot"></span>
-            <span><strong>Hotspot</strong> — a pulsing vent inside scarred ground. Tap one (with Volcanic ≥ 30 and Will ≥ 10) to release heat: builds a volcanic ridge AND resurfaces nearby scars. Scarring is damage <em>and</em> fuel.</span>
-          </div>
-          <p class="help-hint">
-            Two clocks run in parallel. Tectonic Pressure builds fast and creates scars. Volcanic heat builds on those scars and heals them. You balance the two.
-          </p>
-          <p class="help-hint">
-            <strong>Hold to charge.</strong> A quick tap spends 10 Will (Normal). Hold briefly for Focused (50 Will, ×2 outcome). Hold longer for Deep (100 Will, ×3). A pie ring shows your charge. The multiplier cuts both ways — a Deep tap on scarred crust is a bigger <em>loss</em>. Pick ground carefully.
-          </p>
-          <p class="help-hint">
-            Reach stability 100 and you pass into the next epoch — your memory carries forward, but the mood shifts: ten eras from Hadean molten youth to Stillness.
-          </p>
+          <p class="help-hint">Help is being rewritten for the new event-driven design.</p>
         </div>
       </details>
     </footer>
