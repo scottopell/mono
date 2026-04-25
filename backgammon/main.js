@@ -45,8 +45,14 @@
 
   const SESSION_KEY = 'bg.session.v1';
   const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+  const SESSION_DEBOUNCE_MS = 300;
+  let saveSessionTimer = null;
 
-  function saveSession() {
+  // Synchronous write — call directly when we need an immediate snapshot
+  // (game over, abort, etc). For routine in-turn updates use
+  // scheduleSaveSession which debounces the writes.
+  function saveSessionNow() {
+    if (saveSessionTimer) { clearTimeout(saveSessionTimer); saveSessionTimer = null; }
     if (!app.role || app.role === 'local') return;
     if (!app.state) return;
     if (app.aborted) return;
@@ -64,6 +70,18 @@
     } catch (_) {}
   }
 
+  // Coalesce bursts of setState calls (one tap can produce: applyMove,
+  // broadcast, peer ack live update, etc) into a single localStorage
+  // write. localStorage is synchronous; on slow devices a write per
+  // setState introduces noticeable jank.
+  function scheduleSaveSession() {
+    if (saveSessionTimer) return;
+    saveSessionTimer = setTimeout(() => {
+      saveSessionTimer = null;
+      saveSessionNow();
+    }, SESSION_DEBOUNCE_MS);
+  }
+
   function loadSession() {
     try {
       const raw = localStorage.getItem(SESSION_KEY);
@@ -79,6 +97,7 @@
   }
 
   function clearSession() {
+    if (saveSessionTimer) { clearTimeout(saveSessionTimer); saveSessionTimer = null; }
     try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
   }
 
@@ -166,10 +185,6 @@
   //   When resume is set, we reclaim the same room code via peer's
   //   forceCode option, restore the state from localStorage, and exchange
   //   a 'resync' on connection so the more-recent side's state wins.
-  // opts: { resume?: { code, state } }
-  //   When resume is set, we reclaim the same room code via peer's
-  //   forceCode option, restore the state from localStorage, and exchange
-  //   a 'resync' on connection so the more-recent side's state wins.
   function startHost(opts) {
     const resume = opts && opts.resume;
     app.role = 'bottom';
@@ -228,7 +243,9 @@
   el.btnShare.addEventListener('click', async () => {
     if (!app.peerApi || !app.peerApi.code) return;
     const code = app.peerApi.code;
-    const url = window.location.origin + window.location.pathname;
+    // Include the code in the URL hash so opening the shared link prefills
+    // the join input on the recipient's lobby (handled by bootstrapLobby).
+    const url = window.location.origin + window.location.pathname + '#' + code;
     const text = `Join my backgammon game — code ${code}`;
     if (navigator.share) {
       try { await navigator.share({ title: 'Backgammon', text, url }); return; }
@@ -323,6 +340,12 @@
         app.peerApi = null;
         app.role = null;
         app.me = null;
+        // setUrlHash was set optimistically in startGuest. Clear it so a
+        // stale wrong code doesn't keep auto-prefilling on refresh.
+        // The saved session (if any) is left alone — a network blip
+        // shouldn't wipe a user's in-progress game.
+        setUrlHash(null);
+        refreshLobbyResumeUi();
       },
     });
   }
@@ -338,8 +361,19 @@
         beginOpeningRoll();
         break;
       case 'commit':
-        // Full-state broadcast. Replace our state wholesale.
+        // Full-state broadcast. Replace our state wholesale UNLESS we hold
+        // a state that's more recent than what's coming in — that case
+        // happens on rejoin, where the peer may send their saved state
+        // before resync has had a chance to negotiate. The resync flow on
+        // its own would broadcast the newer state back, but only after
+        // we'd already clobbered it here.
         if (app.aborted) return;
+        if (app.state && incomingIsOlder(msg.state, app.state)) {
+          // Don't apply. Send a resync so the peer learns our state is
+          // newer and can adopt it on the next round-trip.
+          sendResync();
+          break;
+        }
         setState(hydrateState(msg.state));
         if (el.screenGame.classList.contains('hidden')) enterGame();
         // Guest receiving the initial commit will be in 'opening' phase.
@@ -381,6 +415,19 @@
     }
   }
 
+  // Recency comparator: a state is "older" if its rollSeq is lower, or if
+  // tied on rollSeq it has fewer recorded sub-moves this turn. Used both
+  // by the commit gate (don't clobber newer local state on rejoin) and
+  // the resync handler (broadcast our state if we have the newer one).
+  function recencyTuple(s) {
+    return [s.rollSeq || 0, (s.moveHistory || []).length];
+  }
+  function incomingIsOlder(remote, local) {
+    const [rs, rh] = recencyTuple(remote);
+    const [ls, lh] = recencyTuple(local);
+    return rs < ls || (rs === ls && rh < lh);
+  }
+
   function sendResync() {
     if (!app.peerApi || !app.state) return;
     app.peerApi.send({
@@ -393,14 +440,8 @@
 
   function handleResync(msg) {
     if (!app.state || !app.peerApi) return;
-    const localSeq = app.state.rollSeq || 0;
-    const localHist = (app.state.moveHistory || []).length;
-    const remoteSeq = msg.rollSeq || 0;
-    const remoteHist = msg.historyLen || 0;
-    const localIsMoreRecent =
-      localSeq > remoteSeq ||
-      (localSeq === remoteSeq && localHist > remoteHist);
-    if (localIsMoreRecent) {
+    const remote = { rollSeq: msg.rollSeq, moveHistory: { length: msg.historyLen || 0 } };
+    if (incomingIsOlder(remote, app.state)) {
       app.peerApi.send({ type: 'commit', state: serializeState(app.state) });
     }
   }
@@ -446,8 +487,8 @@
       document.body.dataset.bgRole = app.role || '';
       document.body.dataset.bgMe = app.me || '';
     } catch (_) {}
-    saveSession();
     if (s && s.phase === 'gameover') clearSession();
+    else scheduleSaveSession();
     renderUi();
     render();
   }
