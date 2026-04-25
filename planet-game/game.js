@@ -93,6 +93,25 @@
   const SACRIFICE_NUDGE_MAX_FRAC = 0.5;              // cap nudge at 50% of event's lifetime
   const SACRIFICE_TAP_SNAP_RADIUS = 0.10;            // smaller than EVENT_TAP_SNAP_RADIUS (0.18) — features are smaller targets
 
+  // PR 4: Orogeny — first major event. Multi-session timescale (8-20
+  // minutes); resolves into a permanent mountain range (terrain mutation
+  // in Phase C). Spawns at convergent zones — pairs of land masses
+  // pressing across narrow ocean.
+  const MAJOR_EVENT_LIFETIME_MIN_MS = 8 * 60 * 1000;   // 8 min
+  const MAJOR_EVENT_LIFETIME_MAX_MS = 20 * 60 * 1000;  // 20 min
+  const OROGENY_SPAWN_PROB = 0.20;                     // base probability when conditions hold
+  const OROGENY_MIN_EPOCH = 2;                         // Hadean has no continents yet; wait until Archean
+  const OROGENY_LAND_HEIGHT_MIN = 0.55;                // height threshold for "this is land" (matches heightToColor)
+  const OROGENY_OCEAN_HEIGHT_MAX = 0.50;               // height threshold for "this is ocean/lowland"
+  const OROGENY_AXIS_DIST_MIN = 0.20;                  // shortest axis between convergent points (normalized)
+  const OROGENY_AXIS_DIST_MAX = 0.55;                  // longest axis
+  const OROGENY_DETECT_ATTEMPTS = 30;                  // how many random pairs to try before giving up
+
+  // PR 4 phase C: terrain mutation
+  const OROGENY_RIDGE_AMPLITUDE = 0.15;     // elevation added at the spine of a handled orogeny
+  const OROGENY_SCAR_AMPLITUDE = -0.18;     // elevation removed at the spine of an auto-resolved orogeny
+  const OROGENY_MOD_WIDTH = 0.10;           // perpendicular extent of the mod (normalized planet radii)
+
   // Law V tuning — density is now 2D, measured at the actual release point
   const DENSITY_SIGMA = 0.3;         // fraction of planet radius — how wide each fault's influence spreads
   const DENSITY_SCARRING_CAP = 1.5;  // saturation point for "how scarred" this area is
@@ -140,6 +159,7 @@
     events: [],          // {kind, x, y, spawnedAt, lifetime, status: 'active'}
     features: [],        // {kind, x, y, quality, bornInEpoch}
     scars: [],           // {x, y, damage, bornInEpoch, sourceEvent: null}
+    terrainMods: [],     // [{type: 'orogenicRange'|'orogenicScar', x1, y1, x2, y2, width, amplitude, bornInEpoch}]
     epochAnchor: 50,
     epoch: 1,
     lastSpawnAt: 0,                  // ms timestamp of most recent spawn
@@ -166,6 +186,7 @@
         events: state.events,
         features: state.features,
         scars: state.scars,
+        terrainMods: state.terrainMods,
         epochAnchor: state.epochAnchor,
         lastSpawnAt: state.lastSpawnAt,
         nextSpawnIntervalMs: state.nextSpawnIntervalMs,
@@ -198,6 +219,10 @@
     state.events      = Array.isArray(saved.events) ? saved.events : [];
     state.features    = Array.isArray(saved.features) ? saved.features : [];
     state.scars       = Array.isArray(saved.scars) ? saved.scars : [];
+    // PR 4 phase C: terrain mods — additive to v3 saves; default to [] when
+    // the save predates this field so v3 saves keep loading without bumping
+    // SAVE_VERSION (empty mods preserves all v3 behavior).
+    state.terrainMods = Array.isArray(saved.terrainMods) ? saved.terrainMods : [];
     state.epochAnchor = Number.isFinite(saved.epochAnchor) ? saved.epochAnchor : 50;
     state.lastSpawnAt = Number.isFinite(saved.lastSpawnAt) ? saved.lastSpawnAt : 0;
     state.nextSpawnIntervalMs = Number.isFinite(saved.nextSpawnIntervalMs) ? saved.nextSpawnIntervalMs : 0;
@@ -269,6 +294,24 @@
     return d;
   }
 
+  // PR 4 phase C: distance from a point (px, py) to the line segment
+  // (x1, y1)-(x2, y2) in the same 2D normalized-planet space. Used by
+  // bakeTerrain to figure out how far each pixel is from a terrainMod's
+  // axis so the mod's amplitude can fall off smoothly toward the edges.
+  function distanceToSegment(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1;
+    const len2 = dx * dx + dy * dy;
+    if (len2 === 0) {
+      const ex = px - x1, ey = py - y1;
+      return Math.sqrt(ex * ex + ey * ey);
+    }
+    let t = ((px - x1) * dx + (py - y1) * dy) / len2;
+    t = clamp(t, 0, 1);
+    const cx = x1 + t * dx, cy = y1 + t * dy;
+    const ex = px - cx, ey = py - cy;
+    return Math.sqrt(ex * ex + ey * ey);
+  }
+
   // Uniform random point on the planet disk.
   function randomDiskPoint() {
     const a = Math.random() * Math.PI * 2;
@@ -316,16 +359,56 @@
     return candidates[candidates.length - 1].p;
   }
 
-  // Choose which kind of event to spawn next. Below the scar-density
-  // threshold, only StressedFault. Above it, 50/50 between StressedFault
-  // and BuildingPlume — the strategic inversion of PR 2: scarring isn't
-  // pure loss, it's fuel for the volcanic repair cycle. Empty planet sees
-  // only faults; accumulated scarring opens the plume valve.
+  // PR 4: KISS convergent-zone detection for Orogeny spawn. Pick a random
+  // land point P1, then probe nearby for a second land point P2 whose
+  // midpoint with P1 sits over ocean/lowland (the "narrow ocean between
+  // continents" telegraph). Returns {x1, y1, x2, y2} or null if no
+  // qualifying pair found in OROGENY_DETECT_ATTEMPTS tries.
   //
-  // "Average scar density" normalises total damage so that 30 total damage
-  // saturates to 1.0 — picked to roughly match "the planet looks pretty
-  // scarred" by the time plumes start flowing.
+  // Deliberately simple. heightAt() requires fbm sampling, so attempts
+  // are bounded; on a normal-noise planet with continents most attempts
+  // succeed within a handful of tries. Return null is the rare "this
+  // planet has no candidate convergent zones right now" signal — the
+  // caller falls back to a different event kind.
+  function findConvergentZone() {
+    for (let attempt = 0; attempt < OROGENY_DETECT_ATTEMPTS; attempt++) {
+      // Step 1: random point that is unambiguously land
+      const p1 = randomDiskPoint();
+      if (heightAt(p1.x, p1.y) < OROGENY_LAND_HEIGHT_MIN) continue;
+      // Step 2: nearby second land point. Sample with a moderate offset.
+      const ang = Math.random() * Math.PI * 2;
+      const dist = OROGENY_AXIS_DIST_MIN
+        + Math.random() * (OROGENY_AXIS_DIST_MAX - OROGENY_AXIS_DIST_MIN);
+      const p2 = { x: p1.x + Math.cos(ang) * dist, y: p1.y + Math.sin(ang) * dist };
+      if (p2.x * p2.x + p2.y * p2.y > 0.95) continue;  // p2 must be inside the disc
+      if (heightAt(p2.x, p2.y) < OROGENY_LAND_HEIGHT_MIN) continue;
+      // Step 3: midpoint must be lower than either land mass — that's the
+      // "narrow ocean / lowland between them" telegraph.
+      const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+      if (heightAt(mid.x, mid.y) > OROGENY_OCEAN_HEIGHT_MAX) continue;
+      return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+    }
+    return null;
+  }
+
+  // Choose which kind of event to spawn next. Three-way selection in
+  // priority order:
+  //   1. Orogeny — rarest. Gated on epoch (>= Archean) since the Hadean
+  //      has no continents to converge yet. Independent of scarring;
+  //      whether a convergent zone exists is checked at spawn time.
+  //   2. BuildingPlume — fueled by accumulated scar density.
+  //   3. StressedFault — fallback. Cracks form on virgin or scarred crust.
+  //
+  // The probabilities chain (each gate is a Math.random() draw) so practical
+  // orogeny spawn rate stays low: ~20% of post-Archean spawn attempts.
   function pickEventKind() {
+    // Orogeny — rare, only after Archean (epoch >= 2). Independent of
+    // scarring; depends on whether convergent zones exist (checked at
+    // spawn time, not here).
+    if (state.epoch >= OROGENY_MIN_EPOCH && Math.random() < OROGENY_SPAWN_PROB) {
+      return 'Orogeny';
+    }
+    // Plume — fueled by scarring (existing logic)
     let totalDamage = 0;
     for (const s of state.scars) totalDamage += s.damage;
     // Clamped to [0, 1] so the comparison with PLUME_SPAWN_THRESHOLD has
@@ -342,22 +425,47 @@
   // randomised interval. Kind is chosen by pickEventKind (scar-density
   // gated); lifetime range is per-kind — plumes ripen slower than faults
   // since they're a slower "vent" phenomenon.
+  //
+  // Orogeny is special: needs a convergent zone (pair of land masses
+  // across narrow ocean). Find one first; if no convergent zone exists
+  // on this planet right now, fall back to StressedFault so we don't
+  // waste the spawn slot. The convergent axis is persisted on the event
+  // (x1, y1, x2, y2) and the event's center position is the axis midpoint.
   function spawnEvent() {
     if (state.events.length >= MAX_ACTIVE_EVENTS) return;
-    const kind = pickEventKind();
-    const pos = pickSpawnPosition(kind);
-    const lifetime = kind === 'BuildingPlume'
-      ? pickRandomInRange(PLUME_LIFETIME_MIN_MS, PLUME_LIFETIME_MAX_MS)
-      : pickRandomInRange(MINOR_EVENT_LIFETIME_MIN_MS, MINOR_EVENT_LIFETIME_MAX_MS);
+    let kind = pickEventKind();
+    let axis = null;
+    if (kind === 'Orogeny') {
+      axis = findConvergentZone();
+      if (!axis) {
+        // Convergent zone search came up empty — fall back to a fault so
+        // we don't waste this spawn slot.
+        kind = 'StressedFault';
+      }
+    }
+    const pos = axis
+      ? { x: (axis.x1 + axis.x2) / 2, y: (axis.y1 + axis.y2) / 2 }
+      : pickSpawnPosition(kind);
+    const lifetime = (kind === 'Orogeny')
+      ? pickRandomInRange(MAJOR_EVENT_LIFETIME_MIN_MS, MAJOR_EVENT_LIFETIME_MAX_MS)
+      : pickRandomInRange(
+          kind === 'BuildingPlume' ? PLUME_LIFETIME_MIN_MS : MINOR_EVENT_LIFETIME_MIN_MS,
+          kind === 'BuildingPlume' ? PLUME_LIFETIME_MAX_MS : MINOR_EVENT_LIFETIME_MAX_MS
+        );
     const now = Date.now();
-    state.events.push({
+    const event = {
       kind,
       x: pos.x,
       y: pos.y,
       spawnedAt: now,            // Date.now() so reloads don't stall ripening
       lifetime,
       status: 'active',
-    });
+    };
+    if (axis) {
+      event.x1 = axis.x1; event.y1 = axis.y1;
+      event.x2 = axis.x2; event.y2 = axis.y2;
+    }
+    state.events.push(event);
     state.lastSpawnAt = now;
     state.nextSpawnIntervalMs = pickRandomInRange(SPAWN_INTERVAL_MIN_MS, SPAWN_INTERVAL_MAX_MS);
   }
@@ -372,11 +480,19 @@
   // 'resolved_auto' so the next sweep filters it out of state.events.
   // Damage range is per-kind: an unhandled BuildingPlume erupts and does
   // significantly more damage than an unhandled StressedFault, raising
-  // the stakes of letting plumes ripen out unattended.
+  // the stakes of letting plumes ripen out unattended. Orogenies that
+  // erupt unchecked are catastrophic — the largest unhandled-event scar,
+  // and they additionally gouge a depression along the convergent axis
+  // via the terrainMod / bakeTerrain path below.
   function autoResolveEvent(event) {
-    const [dmgMin, dmgMax] = event.kind === 'BuildingPlume'
-      ? [PLUME_AUTO_DAMAGE_MIN, PLUME_AUTO_DAMAGE_MAX]
-      : [SCAR_DAMAGE_MIN, SCAR_DAMAGE_MAX];
+    let dmgMin, dmgMax;
+    if (event.kind === 'Orogeny') {
+      dmgMin = 15; dmgMax = 25;
+    } else if (event.kind === 'BuildingPlume') {
+      dmgMin = PLUME_AUTO_DAMAGE_MIN; dmgMax = PLUME_AUTO_DAMAGE_MAX;
+    } else {
+      dmgMin = SCAR_DAMAGE_MIN; dmgMax = SCAR_DAMAGE_MAX;
+    }
     const damage = pickRandomInRange(dmgMin, dmgMax);
     state.scars.push({
       x: event.x,
@@ -386,6 +502,23 @@
       sourceEvent: event.kind,
     });
     event.status = 'resolved_auto';
+
+    // PR 4 phase C: an auto-resolved Orogeny gouges the terrain. The
+    // big Scar above still counts against stability; this mod is the
+    // *visual* — a depression along the convergent axis, baked into
+    // the terrain on the next bake.
+    if (event.kind === 'Orogeny' && event.x1 != null) {
+      state.terrainMods.push({
+        type: 'orogenicScar',
+        x1: event.x1, y1: event.y1,
+        x2: event.x2, y2: event.y2,
+        width: OROGENY_MOD_WIDTH,
+        amplitude: OROGENY_SCAR_AMPLITUDE,
+        bornInEpoch: state.epoch,
+      });
+      bakeTerrain();
+    }
+
     pushLog({
       ageTicks: state.ageTicks,
       scarred: true,
@@ -408,8 +541,17 @@
     let best = null, bestD2 = EVENT_TAP_SNAP_RADIUS * EVENT_TAP_SNAP_RADIUS;
     for (const event of state.events) {
       if (event.status !== 'active') continue;
-      const dx = event.x - px, dy = event.y - py;
-      const d2 = dx * dx + dy * dy;
+      let d2;
+      if (event.kind === 'Orogeny' && event.x1 != null) {
+        // Orogeny renders as a long axis segment; hit-test against the
+        // segment so taps near either endpoint of the visible ridge
+        // count, not just the midpoint.
+        const d = distanceToSegment(px, py, event.x1, event.y1, event.x2, event.y2);
+        d2 = d * d;
+      } else {
+        const dx = event.x - px, dy = event.y - py;
+        d2 = dx * dx + dy * dy;
+      }
       if (d2 < bestD2) { best = event; bestD2 = d2; }
     }
     return best;
@@ -492,6 +634,11 @@
   //     SCAR_PRUNE_THRESHOLD is removed entirely. This is the strategic
   //     loop closure — accumulating scars is *fuel* for plume-driven
   //     repair, not a one-way slide.
+  //   - Orogeny → OrogenicRange (mountain range along the convergent
+  //     axis). Slow-ripening, big reward — quality is scaled by 2.5x
+  //     to reflect 8-20 minute investment. Additionally records a
+  //     positive terrainMod and rebakes the canvas so the new ridge is
+  //     visibly baked into the planet's silhouette from this point on.
   // The event is flagged 'resolved_handled' so the tick-loop sweep removes it.
   function handleEvent(event, tier) {
     if (event.status !== 'active') return false;
@@ -499,17 +646,43 @@
     state.influence -= tier.will;
     const maturity = eventMaturity(event);
     const isPlume = event.kind === 'BuildingPlume';
-    const quality = isPlume
-      ? maturity * tier.mult * FEATURE_QUALITY_BASE * PLUME_FEATURE_QUALITY_MULT
-      : maturity * tier.mult * FEATURE_QUALITY_BASE;
+    const isOrogeny = event.kind === 'Orogeny';
+    let quality, featureKind;
+    if (isOrogeny) {
+      // Orogenies are slow-ripening; reward is large for the patient (2.5x).
+      quality = maturity * tier.mult * FEATURE_QUALITY_BASE * 2.5;
+      featureKind = 'OrogenicRange';
+    } else if (isPlume) {
+      quality = maturity * tier.mult * FEATURE_QUALITY_BASE * PLUME_FEATURE_QUALITY_MULT;
+      featureKind = 'BasaltPatch';
+    } else {
+      quality = maturity * tier.mult * FEATURE_QUALITY_BASE;
+      featureKind = 'VolcanicRidge';
+    }
     state.features.push({
-      kind: isPlume ? 'BasaltPatch' : 'VolcanicRidge',
+      kind: featureKind,
       x: event.x,
       y: event.y,
       quality,
       bornInEpoch: state.epoch,
     });
     event.status = 'resolved_handled';
+
+    // PR 4 phase C: a handled Orogeny mutates the terrain canvas. The
+    // feature record above counts toward stability; this mod is the
+    // *visual* — it raises a permanent mountain ridge along the
+    // convergent axis, baked into the terrain on the next bake.
+    if (isOrogeny && event.x1 != null) {
+      state.terrainMods.push({
+        type: 'orogenicRange',
+        x1: event.x1, y1: event.y1,
+        x2: event.x2, y2: event.y2,
+        width: OROGENY_MOD_WIDTH,
+        amplitude: OROGENY_RIDGE_AMPLITUDE,
+        bornInEpoch: state.epoch,
+      });
+      bakeTerrain();
+    }
 
     let scarsHealed = 0;
     let damageHealed = 0;
@@ -671,6 +844,29 @@
     return sum / norm;
   }
 
+  // Heightfield query at runtime — same formula as bakeTerrain so that
+  // "this point is land" agrees with what's drawn. Returns elevation in
+  // roughly [0, 1].
+  function heightAt(x, y) {
+    const d2 = x * x + y * y;
+    if (d2 > 1) return 0;
+    const rimPull = 0.28 * d2 * d2;  // matches bakeTerrain
+    let h = fbm(x * NOISE_SCALE, y * NOISE_SCALE, state.planetSeed) - rimPull;
+    // Apply persisted terrain mods so convergent-zone detection sees the
+    // ACTUAL drawn elevation, not the un-mutated noise. Without this, a
+    // long-running planet with many resolved orogenies would get repeated
+    // spawn attempts on land that's been raised into a single mass, or
+    // pick "ocean midpoints" that are now bridged by previous mountains.
+    for (const mod of state.terrainMods) {
+      const d = distanceToSegment(x, y, mod.x1, mod.y1, mod.x2, mod.y2);
+      if (d < mod.width) {
+        const falloff = 1 - d / mod.width;
+        h += mod.amplitude * smoothstep(falloff);
+      }
+    }
+    return h;
+  }
+
   // Elevation → RGB palette. Biomes are ordered so continents sit above
   // sea level and peaks cap out in pale rock.
   function heightToColor(h) {
@@ -701,6 +897,22 @@
     // put; the mood shifts.
     const [tr, tg, tb, tw] = epochInfo(state.epoch).tint;
 
+    // PR 4 phase C perf: pre-compute axis-segment bboxes once per bake so
+    // the per-pixel mod loop can reject most pixels via cheap range checks
+    // before invoking distanceToSegment. terrainMods grows over a long
+    // run; without this, bake cost is O(pixels × mods).
+    const activeMods = [];
+    for (const mod of state.terrainMods) {
+      if (mod.type !== 'orogenicRange' && mod.type !== 'orogenicScar') continue;
+      activeMods.push({
+        mod,
+        minX: Math.min(mod.x1, mod.x2) - mod.width,
+        maxX: Math.max(mod.x1, mod.x2) + mod.width,
+        minY: Math.min(mod.y1, mod.y2) - mod.width,
+        maxY: Math.max(mod.y1, mod.y2) + mod.width,
+      });
+    }
+
     for (let py = 0; py < TERRAIN_RES; py++) {
       for (let px = 0; px < TERRAIN_RES; px++) {
         const nx = (px - half) / half; // [-1, 1]
@@ -714,6 +926,24 @@
         const rimPull = 0.28 * d2 * d2;
         const h = fbm(nx * NOISE_SCALE, ny * NOISE_SCALE, seed) - rimPull;
 
+        // PR 4 phase C: apply persistent terrain mods. Each mod is an
+        // axis segment in normalized planet coords with a perpendicular
+        // width and a positive (handled orogeny → ridge) or negative
+        // (auto-resolved orogeny → scar gouge) amplitude. Smoothstep
+        // falloff from the spine to the edge so ridges/scars blend into
+        // the underlying noise rather than read as hard-edged stamps.
+        // Bbox pre-filter (computed once per bake above) skips most
+        // pixels for each mod with a cheap range check.
+        let mh = h;
+        for (const e of activeMods) {
+          if (nx < e.minX || nx > e.maxX || ny < e.minY || ny > e.maxY) continue;
+          const d = distanceToSegment(nx, ny, e.mod.x1, e.mod.y1, e.mod.x2, e.mod.y2);
+          if (d < e.mod.width) {
+            const falloff = 1 - (d / e.mod.width);
+            mh += e.mod.amplitude * smoothstep(falloff);
+          }
+        }
+
         // Directional lighting: top-left lit, bottom-right shaded.
         const light = 0.55 - nx * 0.32 - ny * 0.42;
         const shade = Math.max(0.42, Math.min(1.08, 0.78 + light * 0.55));
@@ -721,7 +951,7 @@
         // Limb darkening: subtle falloff near the circumference adds sphericality.
         const limb = 1 - 0.28 * d2;
 
-        const [r, g, b] = heightToColor(h);
+        const [r, g, b] = heightToColor(mh);
         const k = shade * limb;
         const rr = r * k * tr, gg = g * k * tg, bb = b * k * tb;
         const inv = 1 - tw;
@@ -891,7 +1121,114 @@
       if (event.status !== 'active') continue;
       if (event.kind === 'StressedFault') drawStressedFault(event);
       else if (event.kind === 'BuildingPlume') drawBuildingPlume(event);
+      else if (event.kind === 'Orogeny') drawOrogeny(event);
     }
+  }
+
+  // Draw a single Orogeny. An Orogeny event represents two land masses
+  // converging — over its 8-20 minute lifetime it grows a continuous
+  // ridge along the convergent axis between (x1, y1) and (x2, y2).
+  //
+  // The visual is intentionally subtle and continuous (no discrete
+  // stage flips like StressedFault / BuildingPlume have): the bulge
+  // smoothly widens, color saturates, and late-stage features (cracks,
+  // hot inner glow) fade in via alpha. This matches the design pivot's
+  // "geological time" feel — you can almost see it growing if you stare,
+  // like watching a glacier or a mountain.
+  //
+  // Layers, outer to inner:
+  //   - halo:       wide low-alpha warm wash, "gravitational disturbance"
+  //   - body:       solid filled capsule along the axis (the ridge)
+  //   - crest:      thinner lighter line offset perpendicular (lit upper edge)
+  //   - cracks:     fade in for m > 0.6, short perpendicular strokes
+  //   - hot glow:   fades in for m > 0.9, hint of imminent eruption
+  function drawOrogeny(event) {
+    if (event.x1 == null) return;  // defensive: an Orogeny without an axis can't render
+    const { cx, cy, r } = view;
+    const m = eventMaturity(event);  // 0..1
+
+    // Axis endpoints in pixel space.
+    const ax = cx + event.x1 * r, ay = cy + event.y1 * r;
+    const bx = cx + event.x2 * r, by = cy + event.y2 * r;
+    const dx = bx - ax, dy = by - ay;
+    const axisLen = Math.hypot(dx, dy);
+    if (axisLen < 1) return;
+    const ppx = -dy / axisLen, ppy = dx / axisLen;     // unit perpendicular to the axis
+
+    // Subtle breath — slower than fault/plume because orogeny is
+    // geological time, not heartbeat time.
+    const breathPhase = event.x * 3 + event.y * 5;
+    const breath = 0.92 + 0.08 * Math.sin(performance.now() / 1100 + breathPhase);
+
+    // Width grows smoothly from "barely visible" at m=0 to a noticeable
+    // mountain-range bulge at m=1.
+    const widthPx = (8 + m * 20) * breath;             // 8 -> 28 px perpendicular extent
+
+    ctx.save();
+
+    // Outer halo — wider, low-alpha warm tone. Reads as "gravitational
+    // disturbance" around the bulge.
+    ctx.strokeStyle = `rgba(180, 130, 80, ${0.15 + m * 0.20})`;
+    ctx.lineWidth = widthPx * 2.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+    ctx.stroke();
+
+    // Bulge body — solid filled capsule using a thick rounded line.
+    // Color intensifies with maturity (warmer browns -> warmer reds).
+    const bodyR = Math.round(110 + m * 80);    // 110 -> 190
+    const bodyG = Math.round(75 + m * 25);     // 75 -> 100
+    const bodyB = Math.round(45 + m * 10);     // 45 -> 55
+    ctx.strokeStyle = `rgba(${bodyR}, ${bodyG}, ${bodyB}, ${0.55 + m * 0.30})`;
+    ctx.lineWidth = widthPx;
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+    ctx.stroke();
+
+    // Lit crest — a thinner, lighter line slightly offset perpendicular,
+    // the "lit upper edge" of the rising terrain. Feels like 3D.
+    const crestOffset = -widthPx * 0.20;
+    ctx.strokeStyle = `rgba(245, 215, 175, ${0.35 + m * 0.45})`;
+    ctx.lineWidth = widthPx * 0.35;
+    ctx.beginPath();
+    ctx.moveTo(ax + ppx * crestOffset, ay + ppy * crestOffset);
+    ctx.lineTo(bx + ppx * crestOffset, by + ppy * crestOffset);
+    ctx.stroke();
+
+    // Late-stage cracks — fade in continuously after m > 0.6 (no abrupt
+    // stage flip). 3 short perpendicular strokes across the bulge.
+    if (m > 0.6) {
+      const crackAlpha = (m - 0.6) / 0.4;        // 0 at m=0.6, 1 at m=1.0
+      ctx.strokeStyle = `rgba(20, 8, 4, ${0.7 * crackAlpha})`;
+      ctx.lineWidth = 1.5;
+      const crackHalfW = widthPx * 0.6;
+      for (let i = 1; i <= 3; i++) {
+        const t = i / 4;       // distribute at 1/4, 2/4, 3/4 along the axis
+        const ccx = ax + (bx - ax) * t;
+        const ccy = ay + (by - ay) * t;
+        ctx.beginPath();
+        ctx.moveTo(ccx + ppx * crackHalfW, ccy + ppy * crackHalfW);
+        ctx.lineTo(ccx - ppx * crackHalfW, ccy - ppy * crackHalfW);
+        ctx.stroke();
+      }
+    }
+
+    // At maturity > 0.9, hot inner glow leaks through (we're about to
+    // erupt as a giant orogenic event). Smooth fade-in.
+    if (m > 0.9) {
+      const hotAlpha = (m - 0.9) / 0.1;
+      ctx.strokeStyle = `rgba(255, 90, 50, ${0.5 * hotAlpha * breath})`;
+      ctx.lineWidth = widthPx * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+    }
+
+    ctx.restore();
   }
 
   // Draw a single StressedFault. Position is the event's normalized planet
