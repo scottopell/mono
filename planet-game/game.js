@@ -156,7 +156,8 @@
     influenceFill: $('influence-fill'),
     age: $('age'),
     epoch: $('epoch'),
-    faultCount: $('fault-count'),
+    eventCount: $('event-count'),
+    scarCount: $('scar-count'),
     pauseBtn: $('pause-btn'),
     log: $('log'),
     logCount: $('log-count'),
@@ -293,6 +294,11 @@
       sourceEvent: event.kind,
     });
     event.status = 'resolved_auto';
+    pushLog({
+      ageTicks: state.ageTicks,
+      scarred: true,
+      damage,
+    });
   }
 
   // Find the closest active event within EVENT_TAP_SNAP_RADIUS of a tap.
@@ -532,33 +538,22 @@
     return `${m}m${s.toString().padStart(2, '0')}s`;
   }
 
-  function zoneLabel(scarring) {
-    if (scarring < 0.15) return 'virgin';
-    if (scarring < 0.5) return 'worn';
-    return 'scarred';
-  }
-
   function renderLog() {
     els.log.innerHTML = state.log.map((e) => {
       if (e.epochEnter) {
         const name = epochInfo(e.epochEnter).name;
         return `<li><span class="age">${formatAge(e.ageTicks)}</span>— The <strong>${name}</strong> begins. Your memory carries forward.</li>`;
       }
-      const sign = e.delta >= 0 ? '+' : '';
-      const cls = e.delta >= 0 ? 'good' : 'bad';
-      const autoTag = e.auto ? ' <span class="eruption-tag">unforced</span>' : '';
-      // Tier tag — only show for Focused/Deep; Normal is the default and
-      // doesn't need to crowd the log.
-      const tierTag = (e.tier && e.tier !== 'Normal')
-        ? ` <span class="tier-tag tier-${e.tier.toLowerCase()}">${e.tier.toLowerCase()}</span>` : '';
-      if (e.volcanic) {
-        const vLabel = e.auto ? 'Hotspot burst' : 'Vented';
-        return `<li><span class="age">${formatAge(e.ageTicks)}</span>${vLabel} at V${e.V}${tierTag} <span class="volcanic-tag">volcanic</span> → stability <span class="${cls}">${sign}${e.delta.toFixed(1)}</span>${autoTag}</li>`;
+      if (e.handled) {
+        const tierTag = (e.tier && e.tier !== 'Normal')
+          ? ` <span class="tier-tag tier-${e.tier.toLowerCase()}">${e.tier.toLowerCase()}</span>` : '';
+        return `<li><span class="age">${formatAge(e.ageTicks)}</span>Released event${tierTag} → <span class="good">+${e.quality.toFixed(1)} terrain</span></li>`;
       }
-      const label = e.auto ? 'Erupted' : 'Released';
-      const zone = e.scarring != null ? ` <span class="zone">${zoneLabel(e.scarring)}</span>` : '';
-      return `<li><span class="age">${formatAge(e.ageTicks)}</span>${label} at P${e.P}${zone}${tierTag} → stability <span class="${cls}">${sign}${e.delta.toFixed(1)}</span>${autoTag}</li>`;
-    }).join('');
+      if (e.scarred) {
+        return `<li><span class="age">${formatAge(e.ageTicks)}</span>Event ruptured → <span class="bad">+${e.damage.toFixed(1)} damage</span></li>`;
+      }
+      return '';
+    }).filter(Boolean).join('');
     if (els.logCount) els.logCount.textContent = state.log.length ? String(state.log.length) : '';
   }
 
@@ -871,11 +866,22 @@
   function updateHint() {
     if (!els.hint) return;
     const ready = state.influence >= RELEASE_COST;
-    els.hint.classList.toggle('ready', ready);
-    els.hint.classList.remove('urgent');
+    const activeEvents = state.events.filter(e => e.status === 'active');
+    const ripeEvent = activeEvents.find(e => eventMaturity(e) >= 0.85);
+    const noEvents = activeEvents.length === 0;
 
-    if (ready) {
-      els.hint.textContent = 'awaiting events — taps do nothing yet (Phase 2)';
+    els.hint.classList.toggle('ready', ready && !ripeEvent);
+    els.hint.classList.toggle('urgent', !!ripeEvent);
+
+    if (ripeEvent && ready) {
+      els.hint.textContent = 'an event is cresting — tap before it ruptures';
+    } else if (ripeEvent) {
+      const pct = Math.floor((state.influence / RELEASE_COST) * 100);
+      els.hint.textContent = `cresting — will ${pct}% (it will rupture without you)`;
+    } else if (noEvents && ready) {
+      els.hint.textContent = 'the crust rests — wait for a stress to appear';
+    } else if (ready) {
+      els.hint.textContent = 'tap an event to release — hold for a heavier outcome';
     } else {
       const pct = Math.floor((state.influence / RELEASE_COST) * 100);
       els.hint.textContent = `gathering will… ${pct}%`;
@@ -892,7 +898,8 @@
 
     els.age.textContent = formatAge(state.ageTicks);
     els.epoch.textContent = `${romanEpoch(state.epoch)} · ${epochInfo(state.epoch).name}`;
-    if (els.faultCount) els.faultCount.textContent = state.scars.length;
+    els.eventCount.textContent = state.events.filter(e => e.status === 'active').length;
+    els.scarCount.textContent = state.scars.length;
 
     updateHint();
   }

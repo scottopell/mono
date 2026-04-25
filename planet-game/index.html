@@ -11,10 +11,10 @@
   <main>
     <header>
       <h1>Planet</h1>
-      <p class="tagline">You are the planet. Tap is being rewritten — events arrive in the next phase.</p>
+      <p class="tagline">You are the planet. Stresses build on your crust — release them when they ripen, ignore them and they scar.</p>
     </header>
 
-    <section class="stage" role="button" aria-label="Planet surface">
+    <section class="stage" role="button" aria-label="Tap a ripening event to release it">
       <canvas id="planet" aria-label="your surface, seen from above"></canvas>
     </section>
 
@@ -32,7 +32,8 @@
       <div class="meta">
         <span>Epoch <strong id="epoch">I</strong></span>
         <span>Age <strong id="age">0</strong></span>
-        <span>Faults <strong id="fault-count">0</strong></span>
+        <span>Events <strong id="event-count">0</strong>/5</span>
+        <span>Scars <strong id="scar-count">0</strong></span>
       </div>
     </section>
 
@@ -49,7 +50,18 @@
       <details class="help-details">
         <summary>How it works</summary>
         <div class="help-grid">
-          <p class="help-hint">Help is being rewritten for the new event-driven design.</p>
+          <p class="help-hint">
+            <strong>Events</strong> — discrete stresses on your crust. They appear over time and ripen visibly through five stages: hairline, fissure, glowing crack, pulsing, about to rupture. Up to 5 active at once.
+          </p>
+          <p class="help-hint">
+            <strong>Tap to release.</strong> Tap an event before it ruptures and it becomes a permanent terrain feature on your map (a positive ridge). Ignore it long enough and it auto-resolves into a scar (permanent damage).
+          </p>
+          <p class="help-hint">
+            <strong>Hold to charge.</strong> A quick tap spends 10 Will (Normal). Hold for Focused (50 Will, ×2 outcome). Hold longer for Deep (100 Will, ×3). The pie ring shows your charge.
+          </p>
+          <p class="help-hint">
+            <strong>Stability</strong> is derived from your map: features add quality, scars subtract damage. Reach 100 to enter the next epoch — features and scars carry forward, but the stability anchor resets so each epoch has its own goal.
+          </p>
         </div>
       </details>
     </footer>

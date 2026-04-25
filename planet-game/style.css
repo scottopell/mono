@@ -307,17 +307,6 @@ button:disabled {
 #log li .good { color: var(--good); }
 #log li .bad { color: var(--bad); }
 #log li .age { color: #555a69; margin-right: 8px; }
-#log li .zone {
-  display: inline-block;
-  padding: 1px 6px;
-  margin: 0 2px;
-  font-size: 0.72rem;
-  border-radius: 3px;
-  background: #1a1f2c;
-  color: #9aa3b5;
-  text-transform: lowercase;
-  letter-spacing: 0.04em;
-}
 #log li .tier-tag {
   display: inline-block;
   padding: 1px 6px;
