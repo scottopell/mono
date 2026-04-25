@@ -59,6 +59,22 @@
   const FEATURE_QUALITY_BASE = 8;       // max base quality at maturity 1.0, normal tier
   const STABILITY_AFTER_ADVANCE = 55;   // post-advance stability invariant (Law VI)
 
+  // PR 2: BuildingPlume tuning — the strategic inversion. Plumes spawn on
+  // already-scarred crust and, when handled, RESURFACE the surrounding
+  // damage. Scars become fuel for the repair cycle: cluster scarring →
+  // plume opportunity → tap → scar reduction. Plumes that auto-erupt
+  // unhandled are bigger disasters than fault auto-resolves, raising the
+  // stakes of letting them ripen out.
+  const PLUME_SPAWN_THRESHOLD = 0.4;       // average scar density above which plumes start spawning
+  const PLUME_LIFETIME_MIN_MS = 60 * 1000; // plumes ripen slower than faults — they're a slower "vent"
+  const PLUME_LIFETIME_MAX_MS = 150 * 1000;
+  const PLUME_FEATURE_QUALITY_MULT = 1.4;  // BasaltPatch quality is bigger than VolcanicRidge per maturity unit
+  const PLUME_AUTO_DAMAGE_MIN = 6;         // plumes that auto-erupt do MORE damage than faults
+  const PLUME_AUTO_DAMAGE_MAX = 14;
+  const RESURFACE_RADIUS = 0.28;           // normalized planet radii — scars within this distance get healed
+  const RESURFACE_STRENGTH = 0.65;         // 0..1 — fraction of damage scrubbed from a scar at center
+  const SCAR_PRUNE_THRESHOLD = 1.0;        // scars below this damage after resurfacing get removed entirely
+
   // Law V tuning — density is now 2D, measured at the actual release point
   const DENSITY_SIGMA = 0.3;         // fraction of planet radius — how wide each fault's influence spreads
   const DENSITY_SCARRING_CAP = 1.5;  // saturation point for "how scarred" this area is
@@ -248,19 +264,23 @@
   // map should "telegraph" future events). Otherwise fall back to uniform.
   //
   // Strategy: draw K=8 candidate points uniformly on the disc; weight each
-  // by scarDensityAt(x, y) + 0.1 (the +0.1 floor keeps virgin crust in
-  // play so spawning never starves on a lightly-scarred map); then pick
-  // weighted-randomly. Phase 2 only uses StressedFault, which is naturally
-  // scar-attracted; later kinds (BuildingPlume, etc.) will swap in their
-  // own bias functions.
-  function pickSpawnPosition() {
+  // by scarDensityAt(x, y) + floor; then pick weighted-randomly.
+  //
+  // The floor controls how much virgin crust gets a chance:
+  //   - StressedFault: +0.1 — moderate bias; faults can still appear on
+  //     fresh ground because cracking is what *creates* scarring.
+  //   - BuildingPlume:  +0.05 — stronger bias toward existing scars;
+  //     plumes form ON scarred crust (the volcanic vent rises through
+  //     already-fractured rock), so virgin crust gets less of a shot.
+  function pickSpawnPosition(kind) {
     if (state.scars.length === 0) return randomDiskPoint();
+    const floor = kind === 'BuildingPlume' ? 0.05 : 0.1;
     const K = 8;
     const candidates = [];
     let total = 0;
     for (let i = 0; i < K; i++) {
       const p = randomDiskPoint();
-      const w = scarDensityAt(p.x, p.y) + 0.1;
+      const w = scarDensityAt(p.x, p.y) + floor;
       candidates.push({ p, w });
       total += w;
     }
@@ -272,18 +292,40 @@
     return candidates[candidates.length - 1].p;
   }
 
+  // Choose which kind of event to spawn next. Below the scar-density
+  // threshold, only StressedFault. Above it, 50/50 between StressedFault
+  // and BuildingPlume — the strategic inversion of PR 2: scarring isn't
+  // pure loss, it's fuel for the volcanic repair cycle. Empty planet sees
+  // only faults; accumulated scarring opens the plume valve.
+  //
+  // "Average scar density" normalises total damage so that 30 total damage
+  // saturates to 1.0 — picked to roughly match "the planet looks pretty
+  // scarred" by the time plumes start flowing.
+  function pickEventKind() {
+    let totalDamage = 0;
+    for (const s of state.scars) totalDamage += s.damage;
+    const avgDensity = totalDamage / 30;
+    if (avgDensity > PLUME_SPAWN_THRESHOLD && Math.random() < 0.5) {
+      return 'BuildingPlume';
+    }
+    return 'StressedFault';
+  }
+
   // Spawn a new active event on the planet. Honours the queue cap; updates
   // the spawn-cadence bookkeeping so the next attempt waits a fresh
-  // randomised interval. Phase 2 ships StressedFault only; the spec lists
-  // five more kinds (BuildingPlume, Orogeny, Supervolcano, Rifting,
-  // GlacialAdvance) for later phases.
+  // randomised interval. Kind is chosen by pickEventKind (scar-density
+  // gated); lifetime range is per-kind — plumes ripen slower than faults
+  // since they're a slower "vent" phenomenon.
   function spawnEvent() {
     if (state.events.length >= MAX_ACTIVE_EVENTS) return;
-    const pos = pickSpawnPosition();
-    const lifetime = pickRandomInRange(MINOR_EVENT_LIFETIME_MIN_MS, MINOR_EVENT_LIFETIME_MAX_MS);
+    const kind = pickEventKind();
+    const pos = pickSpawnPosition(kind);
+    const lifetime = kind === 'BuildingPlume'
+      ? pickRandomInRange(PLUME_LIFETIME_MIN_MS, PLUME_LIFETIME_MAX_MS)
+      : pickRandomInRange(MINOR_EVENT_LIFETIME_MIN_MS, MINOR_EVENT_LIFETIME_MAX_MS);
     const now = Date.now();
     state.events.push({
-      kind: 'StressedFault',     // only event type in PR 1; v1 spec lists 5 more for later phases
+      kind,
       x: pos.x,
       y: pos.y,
       spawnedAt: now,            // Date.now() so reloads don't stall ripening
@@ -302,8 +344,14 @@
 
   // Convert a fully-mature active event into a Scar. Status flips to
   // 'resolved_auto' so the next sweep filters it out of state.events.
+  // Damage range is per-kind: an unhandled BuildingPlume erupts and does
+  // significantly more damage than an unhandled StressedFault, raising
+  // the stakes of letting plumes ripen out unattended.
   function autoResolveEvent(event) {
-    const damage = pickRandomInRange(SCAR_DAMAGE_MIN, SCAR_DAMAGE_MAX);
+    const [dmgMin, dmgMax] = event.kind === 'BuildingPlume'
+      ? [PLUME_AUTO_DAMAGE_MIN, PLUME_AUTO_DAMAGE_MAX]
+      : [SCAR_DAMAGE_MIN, SCAR_DAMAGE_MAX];
+    const damage = pickRandomInRange(dmgMin, dmgMax);
     state.scars.push({
       x: event.x,
       y: event.y,
@@ -316,6 +364,7 @@
       ageTicks: state.ageTicks,
       scarred: true,
       damage,
+      sourceEvent: event.kind,
     });
     state.lastResolution = {
       x: event.x, y: event.y,
@@ -342,28 +391,74 @@
 
   // Resolve an active event into a TerrainFeature using a charge tier.
   // Quality scales with maturity (handling later = bigger features) and
-  // tier multiplier. PR 1 maps every event to a VolcanicRidge. The event
-  // is flagged 'resolved_handled' so the tick-loop sweep removes it.
+  // tier multiplier. Branches by event kind:
+  //   - StressedFault → VolcanicRidge (radial ridge feature).
+  //   - BuildingPlume → BasaltPatch (dome feature) AND resurfaces nearby
+  //     scars: scars within RESURFACE_RADIUS lose a fraction of their
+  //     damage proportional to nearness; any scar dropped below
+  //     SCAR_PRUNE_THRESHOLD is removed entirely. This is the strategic
+  //     loop closure — accumulating scars is *fuel* for plume-driven
+  //     repair, not a one-way slide.
+  // The event is flagged 'resolved_handled' so the tick-loop sweep removes it.
   function handleEvent(event, tier) {
     if (event.status !== 'active') return false;
     if (state.influence < tier.will) return false;
     state.influence -= tier.will;
     const maturity = eventMaturity(event);
-    const quality = maturity * tier.mult * FEATURE_QUALITY_BASE;
+    const isPlume = event.kind === 'BuildingPlume';
+    const quality = isPlume
+      ? maturity * tier.mult * FEATURE_QUALITY_BASE * PLUME_FEATURE_QUALITY_MULT
+      : maturity * tier.mult * FEATURE_QUALITY_BASE;
     state.features.push({
-      kind: 'VolcanicRidge',
+      kind: isPlume ? 'BasaltPatch' : 'VolcanicRidge',
       x: event.x,
       y: event.y,
       quality,
       bornInEpoch: state.epoch,
     });
     event.status = 'resolved_handled';
-    pushLog({
-      ageTicks: state.ageTicks,
-      handled: true,
-      quality,
-      tier: tier.label,
-    });
+
+    let scarsHealed = 0;
+    let damageHealed = 0;
+    if (isPlume) {
+      // Resurface: reduce damage on every scar within RESURFACE_RADIUS,
+      // weighted by nearness so the plume's center heals most. Then prune
+      // any scar that has fallen below the visible threshold.
+      const r2 = RESURFACE_RADIUS * RESURFACE_RADIUS;
+      for (const s of state.scars) {
+        const dx = s.x - event.x;
+        const dy = s.y - event.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > r2) continue;
+        const dist = Math.sqrt(d2);
+        const nearness = 1 - dist / RESURFACE_RADIUS;
+        const reduction = s.damage * RESURFACE_STRENGTH * nearness;
+        s.damage -= reduction;
+        damageHealed += reduction;
+        scarsHealed += 1;
+      }
+      const before = state.scars.length;
+      state.scars = state.scars.filter(s => s.damage >= SCAR_PRUNE_THRESHOLD);
+      const pruned = before - state.scars.length;
+      pushLog({
+        ageTicks: state.ageTicks,
+        handled: true,
+        plume: true,
+        quality,
+        tier: tier.label,
+        scarsHealed,
+        damageHealed,
+        scarsPruned: pruned,
+      });
+    } else {
+      pushLog({
+        ageTicks: state.ageTicks,
+        handled: true,
+        quality,
+        tier: tier.label,
+      });
+    }
+
     state.lastResolution = {
       x: event.x, y: event.y,
       kind: 'handled',
@@ -601,13 +696,27 @@
     return 'aboutToRupture';
   }
 
-  // Draw all live events. Single switch on event.kind today (StressedFault
-  // is the only kind in PR 1); structured this way so adding plumes /
-  // orogeny / etc. later is just another `if` branch + a draw helper.
+  // 5-stage classifier for BuildingPlume — distinct stage names from
+  // faults so the player and the renderer never confuse them. The arc is
+  // "swelling crust" → "smoking dome" → "fissured, hot" → "erupting".
+  // Visually: domes (filled circles), not lines.
+  function plumeStage(maturity) {
+    if (maturity < 0.20) return 'bulge';
+    if (maturity < 0.45) return 'dome';
+    if (maturity < 0.70) return 'smoking';
+    if (maturity < 0.90) return 'fissured';
+    return 'erupting';
+  }
+
+  // Draw all live events. Branch on event.kind. Each event kind has its
+  // own draw helper so visual class is unmistakable: faults = radial
+  // lines (crack on the surface); plumes = domes (volume rising out of
+  // the surface).
   function drawEvents() {
     for (const event of state.events) {
       if (event.status !== 'active') continue;
       if (event.kind === 'StressedFault') drawStressedFault(event);
+      else if (event.kind === 'BuildingPlume') drawBuildingPlume(event);
     }
   }
 
@@ -709,6 +818,185 @@
     ctx.restore();
   }
 
+  // Draw a single BuildingPlume. Visually contrasted from StressedFault:
+  // a fault is a radial LINE (a crack along the surface); a plume is a
+  // filled DOME (a volume rising out of the surface). This visual class
+  // difference is the player's instant-recognition cue for "which kind
+  // is this?". Color theme: warm browns, oranges, reds — magma rising
+  // through fractured crust.
+  //
+  // 5 stages mirror plumeStage(maturity):
+  //   - bulge:     dim circular swelling, ~6px
+  //   - dome:      clearer dome with darker rim, ~10px, top highlight
+  //   - smoking:   dome + 2-3 rising wisps, ~13px
+  //   - fissured:  cracks across the dome, hot core glow, ~16px
+  //   - erupting:  hot orange-red, bright center, strong halo, ~18px,
+  //                pulses sin-based like aboutToRupture for faults
+  //
+  // Same per-event 'breath' as drawStressedFault keeps low-maturity
+  // plumes from reading as static.
+  function drawBuildingPlume(event) {
+    const { cx, cy, r } = view;
+    const px = cx + event.x * r;
+    const py = cy + event.y * r;
+    const stage = plumeStage(eventMaturity(event));
+    const breathPhase = event.x * 7 + event.y * 5;
+    const breath = 0.85 + 0.15 * Math.sin(performance.now() / 480 + breathPhase);
+
+    ctx.save();
+
+    switch (stage) {
+      case 'bulge': {
+        // Faint swelling — a dim filled circle, just a hint that something's
+        // cooking under the surface.
+        const radius = 6 * breath;
+        ctx.fillStyle = `rgba(80, 50, 30, ${0.45 * breath})`;
+        ctx.beginPath();
+        ctx.arc(px, py, radius, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case 'dome': {
+        // Clearer dome with a dark rim and a subtle top highlight to
+        // suggest 3D — the swelling is now legible as volume.
+        const radius = 10;
+        // Outer rim shadow.
+        ctx.fillStyle = 'rgba(40, 22, 12, 0.55)';
+        ctx.beginPath();
+        ctx.arc(px, py + 1, radius + 1, 0, Math.PI * 2);
+        ctx.fill();
+        // Body of the dome.
+        ctx.fillStyle = `rgba(120, 70, 35, ${0.7 * breath})`;
+        ctx.beginPath();
+        ctx.arc(px, py, radius, 0, Math.PI * 2);
+        ctx.fill();
+        // Lit highlight near the top — short arc.
+        ctx.strokeStyle = 'rgba(220, 175, 130, 0.55)';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.arc(px, py - 1, radius * 0.65, Math.PI * 1.15, Math.PI * 1.85);
+        ctx.stroke();
+        break;
+      }
+      case 'smoking': {
+        // Dome plus 2-3 wisps of color rising upward — the vent is
+        // exhaling.
+        const radius = 13;
+        // Base shadow.
+        ctx.fillStyle = 'rgba(40, 22, 12, 0.6)';
+        ctx.beginPath();
+        ctx.arc(px, py + 1.5, radius + 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        // Dome body.
+        ctx.fillStyle = `rgba(140, 80, 40, ${0.8 * breath})`;
+        ctx.beginPath();
+        ctx.arc(px, py, radius, 0, Math.PI * 2);
+        ctx.fill();
+        // Top highlight.
+        ctx.strokeStyle = 'rgba(230, 185, 140, 0.6)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(px, py - 1, radius * 0.6, Math.PI * 1.15, Math.PI * 1.85);
+        ctx.stroke();
+        // Three wisps drifting up. Slight time-driven sway so they feel
+        // alive without being distracting.
+        const sway = Math.sin(performance.now() / 600 + breathPhase) * 1.5;
+        ctx.strokeStyle = 'rgba(180, 130, 90, 0.5)';
+        ctx.lineWidth = 1.6;
+        ctx.lineCap = 'round';
+        for (let i = -1; i <= 1; i++) {
+          const wx = px + i * 4;
+          const wy0 = py - radius;
+          const wy1 = wy0 - 8;
+          const wy2 = wy1 - 6;
+          ctx.beginPath();
+          ctx.moveTo(wx, wy0);
+          ctx.quadraticCurveTo(wx + sway * (i === 0 ? 1 : i), wy1, wx + sway * 0.5, wy2);
+          ctx.stroke();
+        }
+        break;
+      }
+      case 'fissured': {
+        // Cracks visible across the dome surface; a hot core glow at
+        // the center signals magma close to the top.
+        const radius = 16;
+        // Base shadow.
+        ctx.fillStyle = 'rgba(40, 22, 12, 0.65)';
+        ctx.beginPath();
+        ctx.arc(px, py + 2, radius + 2, 0, Math.PI * 2);
+        ctx.fill();
+        // Dome body — slightly warmer hue now.
+        ctx.fillStyle = 'rgba(155, 80, 40, 0.85)';
+        ctx.beginPath();
+        ctx.arc(px, py, radius, 0, Math.PI * 2);
+        ctx.fill();
+        // Hot core glow — radial gradient at the center.
+        const glow = ctx.createRadialGradient(px, py, 0, px, py, radius * 0.6);
+        glow.addColorStop(0, 'rgba(255, 180, 90, 0.85)');
+        glow.addColorStop(1, 'rgba(255, 130, 50, 0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(px, py, radius * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+        // Radial cracks — short dark strokes from center outward.
+        ctx.strokeStyle = 'rgba(20, 10, 5, 0.85)';
+        ctx.lineWidth = 1.2;
+        ctx.lineCap = 'round';
+        const crackSeed = breathPhase;
+        for (let i = 0; i < 5; i++) {
+          const a = crackSeed + i * (Math.PI * 2 / 5);
+          const r0 = radius * 0.15;
+          const r1 = radius * 0.95;
+          ctx.beginPath();
+          ctx.moveTo(px + Math.cos(a) * r0, py + Math.sin(a) * r0);
+          ctx.lineTo(px + Math.cos(a) * r1, py + Math.sin(a) * r1);
+          ctx.stroke();
+        }
+        break;
+      }
+      case 'erupting': {
+        // Hot orange-red, bright pulsing center, strong outer halo —
+        // the dome is about to crack open. Sin-based color lerp matches
+        // the 'aboutToRupture' fault stage tempo so the urgency cue
+        // feels consistent across kinds.
+        const radius = 18;
+        const t = (Math.sin(performance.now() / 220) + 1) * 0.5;
+        // Outer halo — wide and warm.
+        const halo = ctx.createRadialGradient(px, py, radius * 0.5, px, py, radius * 2.2);
+        halo.addColorStop(0, `rgba(255, 140, 70, ${0.55 + 0.2 * t})`);
+        halo.addColorStop(1, 'rgba(255, 80, 30, 0)');
+        ctx.fillStyle = halo;
+        ctx.beginPath();
+        ctx.arc(px, py, radius * 2.2, 0, Math.PI * 2);
+        ctx.fill();
+        // Dark base.
+        ctx.fillStyle = 'rgba(40, 18, 10, 0.7)';
+        ctx.beginPath();
+        ctx.arc(px, py + 2, radius + 2, 0, Math.PI * 2);
+        ctx.fill();
+        // Glowing dome body.
+        const rC = Math.round(220 + (255 - 220) * t);
+        const gC = Math.round(100 + (140 - 100) * t);
+        const bC = Math.round(50 + (70 - 50) * t);
+        ctx.fillStyle = `rgba(${rC}, ${gC}, ${bC}, 0.95)`;
+        ctx.beginPath();
+        ctx.arc(px, py, radius, 0, Math.PI * 2);
+        ctx.fill();
+        // Bright hot center.
+        const core = ctx.createRadialGradient(px, py, 0, px, py, radius * 0.7);
+        core.addColorStop(0, `rgba(255, 245, 200, ${0.9 + 0.1 * t})`);
+        core.addColorStop(1, 'rgba(255, 160, 60, 0)');
+        ctx.fillStyle = core;
+        ctx.beginPath();
+        ctx.arc(px, py, radius * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+    }
+
+    ctx.restore();
+  }
+
   // Draw permanent geology — scars left behind by auto-resolved events.
   // Visually distinct from active events:
   //   - Run TANGENT to the planet (perpendicular to the radius), where
@@ -759,10 +1047,13 @@
     ctx.restore();
   }
 
-  // Draw permanent geology — TerrainFeatures from handled events. Bright
-  // tan ridges with a warm halo and a soft dark base shadow for depth.
-  // Length scales with feature.quality, oriented radially like events
-  // and scars. Static (no animation) — features are persistent geology.
+  // Draw permanent geology — TerrainFeatures from handled events. Branches
+  // on kind so the player can read their autobiography by shape:
+  //   - VolcanicRidge (from StressedFault):  radial-line ridge, tan crest.
+  //   - BasaltPatch    (from BuildingPlume): filled tan dome, dark base.
+  // Same warm tan palette family so they belong to one geology, but the
+  // line-vs-dome distinction matches the event-kind that produced them.
+  // Static (no animation) — features are persistent geology.
   function drawFeatures() {
     const { cx, cy, r } = view;
     ctx.save();
@@ -770,6 +1061,46 @@
     for (const f of state.features) {
       const px = cx + f.x * r;
       const py = cy + f.y * r;
+
+      if (f.kind === 'BasaltPatch') {
+        // Filled dome — a circle, NOT a line. Quality scales the radius
+        // with a clamp so even tiny BasaltPatches are readable and huge
+        // ones don't drown the planet.
+        const radius = clamp(8 + f.quality * 0.9, 8, 30);
+
+        // Outer warm halo — soft glow lifts the patch off the crust.
+        const halo = ctx.createRadialGradient(px, py, radius * 0.5, px, py, radius * 1.7);
+        halo.addColorStop(0, 'rgba(255, 200, 130, 0.32)');
+        halo.addColorStop(1, 'rgba(255, 200, 130, 0)');
+        ctx.fillStyle = halo;
+        ctx.beginPath();
+        ctx.arc(px, py, radius * 1.7, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Dark base shadow — slightly offset down so the patch sits on
+        // the surface like a low cone.
+        ctx.fillStyle = 'rgba(20, 14, 10, 0.75)';
+        ctx.beginPath();
+        ctx.arc(px, py + 1.5, radius + 1.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Body — warm tan, the cooled basalt surface.
+        ctx.fillStyle = 'rgba(200, 150, 95, 0.95)';
+        ctx.beginPath();
+        ctx.arc(px, py, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Lit highlight near the top — short bright arc gives the dome
+        // its 3D read.
+        ctx.strokeStyle = 'rgba(255, 240, 210, 0.8)';
+        ctx.lineWidth = Math.max(1, radius * 0.12);
+        ctx.beginPath();
+        ctx.arc(px, py - 1, radius * 0.65, Math.PI * 1.15, Math.PI * 1.85);
+        ctx.stroke();
+        continue;
+      }
+
+      // Default: VolcanicRidge — radial-line ridge.
       // Length scales with quality. Larger range than before so high-quality
       // (Deep tier on a near-rupture event = quality ~24) features read as
       // distinctly massive vs. a low-quality (Normal on a young event) one.
