@@ -283,6 +283,30 @@ html, body {
   z-index: 10;
   transition: background 0.3s ease;
 }
+
+/* Fullscreen toggle, mirrored from the status dot in the top-left.
+   Hidden by default if the Fullscreen API is unavailable (added at runtime). */
+.fullscreen-toggle {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 0.25rem);
+  left: calc(env(safe-area-inset-left) + 0.25rem);
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--accent-dim);
+  color: var(--ink-dim);
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  z-index: 10;
+  opacity: 0.5;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+.fullscreen-toggle:hover { opacity: 1; color: var(--ink); }
+.fullscreen-toggle:active { background: var(--panel); }
+.fullscreen-toggle.unsupported { display: none; }
 .status-idle         { background: var(--ink-dim); opacity: 0.4; }
 .status-connecting   { background: var(--warn); animation: pulse 1s ease-in-out infinite; }
 .status-connected    { background: var(--ok); }
