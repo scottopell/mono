@@ -147,6 +147,16 @@ html, body {
   border-color: transparent;
 }
 
+/* Rejoin gets a green tint so a returning player notices it before the
+   default "New Game" — the muscle memory of "tap the orange button"
+   would otherwise blow away their in-progress game. */
+.btn-rejoin {
+  background: var(--ok);
+  color: var(--bg);
+  border-color: var(--ok);
+}
+.btn-rejoin:hover:not(:disabled) { background: #84c693; }
+
 .error-msg {
   color: var(--danger);
   min-height: 1.2em;

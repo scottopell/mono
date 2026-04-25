@@ -23,6 +23,7 @@
     role: null,             // 'bottom' | 'top' | 'local'
     me: null,               // 'p1' | 'p2'
     peerApi: null,
+    savedCode: null,        // room code recovered from a saved session
     state: null,
     selectedDie: null,      // index into state.dice (0..3), per-device UI state
     rollSession: null,      // active commit-reveal session
@@ -31,7 +32,67 @@
     status: 'idle',
     aborted: false,
     pendingDiceMsgs: [],    // commit/reveal messages arriving before session ready
+    rejoining: false,       // true while we're resuming from saved state
   };
+
+  // --- Session persistence ---
+  //
+  // Refresh on a phone in the middle of a game would otherwise drop the
+  // room. We persist {role, me, code, state} on every setState and restore
+  // it from a "Rejoin" button on the lobby. The room code also rides in the
+  // URL hash so a refresh/share-of-URL keeps the code visible without
+  // needing localStorage.
+
+  const SESSION_KEY = 'bg.session.v1';
+  const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+  function saveSession() {
+    if (!app.role || app.role === 'local') return;
+    if (!app.state) return;
+    if (app.aborted) return;
+    if (app.state.phase === 'gameover') return;       // don't restore finished games
+    const code = (app.peerApi && app.peerApi.code) || app.savedCode;
+    if (!code) return;
+    try {
+      localStorage.setItem(SESSION_KEY, JSON.stringify({
+        role: app.role,
+        me: app.me,
+        code,
+        state: serializeState(app.state),
+        timestamp: Date.now(),
+      }));
+    } catch (_) {}
+  }
+
+  function loadSession() {
+    try {
+      const raw = localStorage.getItem(SESSION_KEY);
+      if (!raw) return null;
+      const sess = JSON.parse(raw);
+      if (!sess.code || !sess.role || !sess.state) return null;
+      if (Date.now() - (sess.timestamp || 0) > SESSION_MAX_AGE_MS) {
+        localStorage.removeItem(SESSION_KEY);
+        return null;
+      }
+      return sess;
+    } catch (_) { return null; }
+  }
+
+  function clearSession() {
+    try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+  }
+
+  function setUrlHash(code) {
+    const path = window.location.pathname + window.location.search;
+    try {
+      if (code) history.replaceState(null, '', path + '#' + code);
+      else      history.replaceState(null, '', path);
+    } catch (_) {}
+  }
+
+  function getUrlHash() {
+    return (window.location.hash.replace(/^#/, '') || '').toUpperCase();
+  }
 
   // --- DOM refs ---
   const el = {
@@ -40,6 +101,7 @@
     screenWaiting: document.getElementById('screen-waiting'),
     screenGame: document.getElementById('screen-game'),
     btnNewGame: document.getElementById('btn-new-game'),
+    btnRejoin: document.getElementById('btn-rejoin'),
     btnLocal: document.getElementById('btn-local'),
     joinForm: document.getElementById('join-form'),
     joinCode: document.getElementById('join-code'),
@@ -84,32 +146,72 @@
 
   el.btnNewGame.addEventListener('click', () => {
     el.lobbyError.textContent = '';
+    clearSession();   // brand-new game replaces any stale saved session
+    setUrlHash(null);
     startHost();
   });
 
-  function startHost() {
+  el.btnRejoin.addEventListener('click', () => {
+    el.lobbyError.textContent = '';
+    const saved = loadSession();
+    if (!saved) { refreshLobbyResumeUi(); return; }
+    if (saved.role === 'bottom') {
+      startHost({ resume: { code: saved.code, state: saved.state } });
+    } else if (saved.role === 'top') {
+      startGuest(saved.code, { resume: { state: saved.state } });
+    }
+  });
+
+  // opts: { resume?: { code, state } }
+  //   When resume is set, we reclaim the same room code via peer's
+  //   forceCode option, restore the state from localStorage, and exchange
+  //   a 'resync' on connection so the more-recent side's state wins.
+  // opts: { resume?: { code, state } }
+  //   When resume is set, we reclaim the same room code via peer's
+  //   forceCode option, restore the state from localStorage, and exchange
+  //   a 'resync' on connection so the more-recent side's state wins.
+  function startHost(opts) {
+    const resume = opts && opts.resume;
     app.role = 'bottom';
     app.me = 'p1';
+    app.rejoining = !!resume;
+    app.savedCode = resume ? resume.code : null;
     setStatus('connecting');
-
+    if (resume) {
+      // Restore working state immediately so renderUi/render have something
+      // to draw and so the resync exchange has a rollSeq to compare. Also
+      // jump straight to the game screen — the user shouldn't bounce back
+      // to a "share this code" screen during a transient reconnect.
+      setState(hydrateState(resume.state));
+      setUrlHash(resume.code);
+      enterGame();
+    }
     app.peerApi = peer.createHost({
+      forceCode: resume ? resume.code : undefined,
       onStatus: (s) => {
         setStatus(s);
-        if (s === 'waiting') {
+        // Only show the waiting/share screen for fresh games. On resume
+        // we keep the user looking at the game screen even while waiting
+        // for the peer's reconnect.
+        if (s === 'waiting' && !resume) {
           el.roomCodeDisplay.textContent = app.peerApi.code;
+          setUrlHash(app.peerApi.code);
           showScreen('waiting');
         }
       },
       onPeerJoined: () => {
-        // Host seeds the initial state, ships it to the guest, and enters
-        // the opening roll. The guest will arrive at 'opening' phase once
-        // it receives the commit; both phones then kick off their own
-        // commit-reveal sessions and the protocol completes symmetrically.
-        const s = rules.initialState();
-        setState(s);
+        // Three flows converge here: fresh game first-join, resume after
+        // the host refreshed, and reconnection from a refreshed guest
+        // while we kept state in memory. Only seed initialState if we
+        // have nothing yet; otherwise preserve whatever's on the board.
+        // resync afterwards lets the peer override us if they have the
+        // more recent state — a no-op when both sides agree.
+        if (!app.state) setState(rules.initialState());
         enterGame();
-        app.peerApi.send({ type: 'commit', state: serializeState(s) });
+        app.peerApi.send({ type: 'commit', state: serializeState(app.state) });
         app.peerApi.send({ type: 'hello', role: app.role });
+        sendResync();
+        app.rejoining = false;
       },
       onMessage: handlePeerMessage,
       onError: (err) => {
@@ -147,7 +249,11 @@
     app.peerApi = null;
     app.role = null;
     app.me = null;
+    app.savedCode = null;
+    clearSession();
+    setUrlHash(null);
     setStatus('idle');
+    refreshLobbyResumeUi();
     showScreen('lobby');
   });
 
@@ -178,10 +284,18 @@
     startGuest(code);
   });
 
-  function startGuest(code) {
+  // opts: { resume?: { state } }
+  //   Resume keeps the same role and prior state in memory so 'resync'
+  //   can negotiate which side has the canonical version.
+  function startGuest(code, opts) {
+    const resume = opts && opts.resume;
     app.role = 'top';
     app.me = 'p2';
+    app.rejoining = !!resume;
+    app.savedCode = code;
     setStatus('connecting');
+    setUrlHash(code);
+    if (resume) setState(hydrateState(resume.state));
     app.peerApi = peer.joinAsGuest(code, {
       onStatus: (s) => {
         setStatus(s);
@@ -189,6 +303,11 @@
           // Host has already sent initial state by the time we connect;
           // wait for it. Send hello so host knows our role.
           app.peerApi.send({ type: 'hello', role: app.role });
+          if (resume) {
+            sendResync();
+            app.rejoining = false;
+            if (el.screenGame.classList.contains('hidden')) enterGame();
+          }
         }
       },
       onMessage: handlePeerMessage,
@@ -245,12 +364,44 @@
         if (app.rollSession) app.rollSession.onPeerReveal(msg);
         else app.pendingDiceMsgs.push(msg);
         break;
+      case 'resync':
+        // Either side sends this on rejoin. We compare local vs. remote
+        // (rollSeq, then moveHistory length) and broadcast our state via
+        // 'commit' if ours is more recent. If theirs is more recent, we
+        // do nothing — they'll send a commit on their side. If we agree,
+        // neither sends and the existing state stands.
+        handleResync(msg);
+        break;
       case 'abort':
         abortSession('peer: ' + (msg.reason || 'unspecified'));
         break;
       default:
         // Unknown message; drop.
         break;
+    }
+  }
+
+  function sendResync() {
+    if (!app.peerApi || !app.state) return;
+    app.peerApi.send({
+      type: 'resync',
+      rollSeq: app.state.rollSeq || 0,
+      historyLen: (app.state.moveHistory || []).length,
+      phase: app.state.phase,
+    });
+  }
+
+  function handleResync(msg) {
+    if (!app.state || !app.peerApi) return;
+    const localSeq = app.state.rollSeq || 0;
+    const localHist = (app.state.moveHistory || []).length;
+    const remoteSeq = msg.rollSeq || 0;
+    const remoteHist = msg.historyLen || 0;
+    const localIsMoreRecent =
+      localSeq > remoteSeq ||
+      (localSeq === remoteSeq && localHist > remoteHist);
+    if (localIsMoreRecent) {
+      app.peerApi.send({ type: 'commit', state: serializeState(app.state) });
     }
   }
 
@@ -264,6 +415,9 @@
     el.btnPickup.classList.add('hidden');
     el.btnNew.classList.add('hidden');
     if (app.peerApi) app.peerApi.send({ type: 'abort', reason });
+    // A session that aborted on integrity grounds shouldn't be resumed.
+    clearSession();
+    setUrlHash(null);
   }
 
   // --- Game entry ---
@@ -292,6 +446,8 @@
       document.body.dataset.bgRole = app.role || '';
       document.body.dataset.bgMe = app.me || '';
     } catch (_) {}
+    saveSession();
+    if (s && s.phase === 'gameover') clearSession();
     renderUi();
     render();
   }
@@ -735,10 +891,31 @@
     else if (/^[0-9a-f]{40}$/i.test(raw)) shaEl.textContent = raw.slice(0, 7);
   })();
 
+  // --- Lobby resume / URL-hash bootstrap ---
+
+  function refreshLobbyResumeUi() {
+    if (!el.btnRejoin) return;
+    const saved = loadSession();
+    if (saved && saved.code) {
+      el.btnRejoin.classList.remove('hidden');
+      el.btnRejoin.textContent = `Rejoin game (${saved.code})`;
+    } else {
+      el.btnRejoin.classList.add('hidden');
+    }
+  }
+
+  function bootstrapLobby() {
+    refreshLobbyResumeUi();
+    // Pre-fill the join code from a shared URL like #ABCDEF.
+    const hash = getUrlHash();
+    if (hash) el.joinCode.value = hash;
+  }
+
   // --- Boot ---
 
   setStatus('idle');
   showScreen('lobby');
+  bootstrapLobby();
 
   // Dev affordance
   window.__bg = app;
