@@ -491,6 +491,131 @@
     if (els.logCount) els.logCount.textContent = state.log.length ? String(state.log.length) : '';
   }
 
+  // Map maturity → one of 5 discrete visual stages. Discrete (not smoothly
+  // interpolated) on purpose — per the design pivot, the moment a fault
+  // crosses from one look to the next is supposed to be a *thing that
+  // happened*, not a number ticking. The 5 stages give the player something
+  // legible to react to as ripeness climbs.
+  function faultStage(maturity) {
+    if (maturity < 0.20) return 'hairline';
+    if (maturity < 0.45) return 'fissure';
+    if (maturity < 0.70) return 'glowingCrack';
+    if (maturity < 0.90) return 'pulsing';
+    return 'aboutToRupture';
+  }
+
+  // Draw all live events. Single switch on event.kind today (StressedFault
+  // is the only kind in PR 1); structured this way so adding plumes /
+  // orogeny / etc. later is just another `if` branch + a draw helper.
+  function drawEvents() {
+    for (const event of state.events) {
+      if (event.status !== 'active') continue;
+      if (event.kind === 'StressedFault') drawStressedFault(event);
+    }
+  }
+
+  // Draw a single StressedFault. Position is the event's normalized planet
+  // coordinate scaled into pixel space. Orientation is *radial* — the line
+  // points outward from planet center, so it visually reads as a crack
+  // running along the radius (a fissure pointing toward space). Five
+  // discrete visual treatments correspond to the maturity stages.
+  //
+  // Halos use a two-stroke pattern (wider transparent stroke under the
+  // crisp line) rather than ctx.shadowBlur — shadowBlur is much slower per
+  // draw call and we may have up to 5 events on screen each frame.
+  function drawStressedFault(event) {
+    const { cx, cy, r } = view;
+    const px = cx + event.x * r;
+    const py = cy + event.y * r;
+    const stage = faultStage(eventMaturity(event));
+    // Radial-aligned line: the crack runs along the radius from planet
+    // center, so atan2(y, x) is exactly the orientation we want.
+    const ang = Math.atan2(event.y, event.x);
+
+    let length, width, color, halo = null;
+    switch (stage) {
+      case 'hairline':
+        length = 18; width = 0.5;
+        color = 'rgba(60, 50, 45, 0.4)';
+        break;
+      case 'fissure':
+        length = 28; width = 1.2;
+        color = 'rgba(40, 30, 25, 0.7)';
+        break;
+      case 'glowingCrack':
+        length = 36; width = 2;
+        color = 'rgba(180, 80, 50, 0.8)';
+        halo = { color: 'rgba(180, 80, 50, 0.4)', width: 6 };
+        break;
+      case 'pulsing': {
+        // ~220ms half-period; sin wave in [0,1] used to lerp between a
+        // bright peak color and a dim trough. Subtle, not flashy.
+        const t = (Math.sin(performance.now() / 220) + 1) * 0.5;
+        const rC = Math.round(180 + (220 - 180) * t);
+        const gC = Math.round(70 + (110 - 70) * t);
+        const bC = Math.round(40 + (60 - 40) * t);
+        const aC = 0.6 + 0.4 * t;
+        length = 40; width = 2.5;
+        color = `rgba(${rC}, ${gC}, ${bC}, ${aC})`;
+        halo = { color: `rgba(${rC}, ${gC}, ${bC}, ${0.35 * aC})`, width: 8 };
+        break;
+      }
+      case 'aboutToRupture':
+        length = 44; width = 3;
+        color = 'rgba(245, 90, 50, 1)';
+        halo = { color: 'rgba(245, 90, 50, 0.55)', width: 12 };
+        break;
+    }
+
+    const dx = Math.cos(ang) * length * 0.5;
+    const dy = Math.sin(ang) * length * 0.5;
+
+    ctx.save();
+    ctx.lineCap = 'round';
+    if (halo) {
+      ctx.strokeStyle = halo.color;
+      ctx.lineWidth = halo.width;
+      ctx.beginPath();
+      ctx.moveTo(px - dx, py - dy);
+      ctx.lineTo(px + dx, py + dy);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    ctx.moveTo(px - dx, py - dy);
+    ctx.lineTo(px + dx, py + dy);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Draw permanent geology — scars left behind by auto-resolved events.
+  // Short dark radial slashes; length scales modestly with damage so a
+  // damage=10 scar reads heavier than a damage=3 one without becoming
+  // cartoonishly large. No animation (scars are static, not events).
+  function drawScars() {
+    const { cx, cy, r } = view;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(20, 12, 8, 0.85)';
+    ctx.lineCap = 'round';
+    for (const s of state.scars) {
+      const px = cx + s.x * r;
+      const py = cy + s.y * r;
+      const damage = clamp(s.damage || SCAR_DAMAGE_MIN, SCAR_DAMAGE_MIN, SCAR_DAMAGE_MAX);
+      const length = 8 + (damage / 10) * 6;     // ~10px (light) → 14px (heavy)
+      const width = 1 + (damage / 10) * 1;      // 1px → 2px
+      const ang = Math.atan2(s.y, s.x);
+      const dx = Math.cos(ang) * length * 0.5;
+      const dy = Math.sin(ang) * length * 0.5;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(px - dx, py - dy);
+      ctx.lineTo(px + dx, py + dy);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawPlanet() {
     const { w, h, cx, cy, r } = view;
     ctx.clearRect(0, 0, w, h);
@@ -514,19 +639,11 @@
       ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
     }
 
-    // Scars — placeholder rendering until Phase 3 redoes geology visuals
-    // properly. Each scar is a simple dark dot scaled by its damage. Phase 2
-    // will populate state.scars from auto-resolved events; here we just
-    // ensure existing scar data renders without crashing.
-    for (const s of state.scars) {
-      const px = cx + s.x * r;
-      const py = cy + s.y * r;
-      const dot = Math.max(2, Math.min(6, (s.damage || 1) * 0.6));
-      ctx.fillStyle = 'rgba(15, 12, 10, 0.85)';
-      ctx.beginPath();
-      ctx.arc(px, py, dot, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // Geology layer — scars first (permanent damage), then events on top
+    // (live ripening faults). Both render inside the planet clip so visuals
+    // near the rim don't bleed into space.
+    drawScars();
+    drawEvents();
     ctx.restore();
 
     // Subtle epoch rim — keeps the silhouette legible against the background.
