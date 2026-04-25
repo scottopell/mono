@@ -99,6 +99,10 @@
     paused: false,
     log: [],
     planetSeed: (Math.random() * 0xffffffff) >>> 0,
+    // Ephemeral UI: most recent event resolution, drives the floating
+    // delta + ring feedback. Cleared once the animation expires. Not
+    // persisted (re-derives from state silence on reload).
+    lastResolution: null,             // {x, y, kind: 'handled'|'scarred', delta, bornAt}
   };
 
   function persistState() {
@@ -299,6 +303,12 @@
       scarred: true,
       damage,
     });
+    state.lastResolution = {
+      x: event.x, y: event.y,
+      kind: 'scarred',
+      delta: -damage,
+      bornAt: performance.now(),
+    };
   }
 
   // Find the closest active event within EVENT_TAP_SNAP_RADIUS of a tap.
@@ -340,6 +350,12 @@
       quality,
       tier: tier.label,
     });
+    state.lastResolution = {
+      x: event.x, y: event.y,
+      kind: 'handled',
+      delta: quality,
+      bornAt: performance.now(),
+    };
     flashStage();
     maybeAdvanceEpoch();
     return true;
@@ -583,12 +599,16 @@
   // Draw a single StressedFault. Position is the event's normalized planet
   // coordinate scaled into pixel space. Orientation is *radial* — the line
   // points outward from planet center, so it visually reads as a crack
-  // running along the radius (a fissure pointing toward space). Five
-  // discrete visual treatments correspond to the maturity stages.
+  // running along the radius (a fissure pointing toward space).
   //
-  // Halos use a two-stroke pattern (wider transparent stroke under the
-  // crisp line) rather than ctx.shadowBlur — shadowBlur is much slower per
-  // draw call and we may have up to 5 events on screen each frame.
+  // Each stage uses a TWO-TONE pattern (dark shadow stroke + colored fill
+  // stroke on top). This guarantees readable contrast against any epoch
+  // palette — molten Hadean, blue Cambrian, pale Stillness all coexist
+  // without a single colour scheme washing the events out.
+  //
+  // Halos use the same two-stroke pattern (wider transparent stroke under
+  // the crisp line) rather than ctx.shadowBlur — shadowBlur is much slower
+  // per draw call and we may have up to 5 events on screen each frame.
   function drawStressedFault(event) {
     const { cx, cy, r } = view;
     const px = cx + event.x * r;
@@ -598,38 +618,39 @@
     // center, so atan2(y, x) is exactly the orientation we want.
     const ang = Math.atan2(event.y, event.x);
 
-    let length, width, color, halo = null;
+    // Tunable per stage. shadowWidth > strokeWidth gives a "drop shadow"
+    // outline; halo (when set) sits below shadow for the warmer stages.
+    let length, strokeWidth, shadowWidth, fillColor, halo = null;
     switch (stage) {
       case 'hairline':
-        length = 18; width = 0.5;
-        color = 'rgba(60, 50, 45, 0.4)';
+        length = 22; strokeWidth = 1.0; shadowWidth = 2.4;
+        fillColor = 'rgba(240, 230, 215, 0.75)';
         break;
       case 'fissure':
-        length = 28; width = 1.2;
-        color = 'rgba(40, 30, 25, 0.7)';
+        length = 32; strokeWidth = 1.6; shadowWidth = 3.4;
+        fillColor = 'rgba(245, 215, 180, 0.85)';
         break;
       case 'glowingCrack':
-        length = 36; width = 2;
-        color = 'rgba(180, 80, 50, 0.8)';
-        halo = { color: 'rgba(180, 80, 50, 0.4)', width: 6 };
+        length = 40; strokeWidth = 2.4; shadowWidth = 4.6;
+        fillColor = 'rgba(245, 165, 110, 0.95)';
+        halo = { color: 'rgba(220, 110, 60, 0.45)', width: 9 };
         break;
       case 'pulsing': {
-        // ~220ms half-period; sin wave in [0,1] used to lerp between a
-        // bright peak color and a dim trough. Subtle, not flashy.
+        // ~220ms half-period; lerp between bright peak and dim trough.
         const t = (Math.sin(performance.now() / 220) + 1) * 0.5;
-        const rC = Math.round(180 + (220 - 180) * t);
-        const gC = Math.round(70 + (110 - 70) * t);
-        const bC = Math.round(40 + (60 - 40) * t);
-        const aC = 0.6 + 0.4 * t;
-        length = 40; width = 2.5;
-        color = `rgba(${rC}, ${gC}, ${bC}, ${aC})`;
-        halo = { color: `rgba(${rC}, ${gC}, ${bC}, ${0.35 * aC})`, width: 8 };
+        const rC = Math.round(220 + (250 - 220) * t);
+        const gC = Math.round(120 + (160 - 120) * t);
+        const bC = Math.round(70 + (100 - 70) * t);
+        const aC = 0.85 + 0.15 * t;
+        length = 46; strokeWidth = 2.8; shadowWidth = 5.4;
+        fillColor = `rgba(${rC}, ${gC}, ${bC}, ${aC})`;
+        halo = { color: `rgba(${rC}, ${gC}, ${bC}, ${0.4 * aC})`, width: 12 };
         break;
       }
       case 'aboutToRupture':
-        length = 44; width = 3;
-        color = 'rgba(245, 90, 50, 1)';
-        halo = { color: 'rgba(245, 90, 50, 0.55)', width: 12 };
+        length = 52; strokeWidth = 3.4; shadowWidth = 6.2;
+        fillColor = 'rgba(255, 110, 70, 1)';
+        halo = { color: 'rgba(255, 90, 50, 0.6)', width: 16 };
         break;
     }
 
@@ -646,8 +667,17 @@
       ctx.lineTo(px + dx, py + dy);
       ctx.stroke();
     }
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width;
+    // Dark shadow underneath — wider than the fill so a thin halo of
+    // darkness rims the line. Reads on every palette.
+    ctx.strokeStyle = 'rgba(15, 8, 4, 0.85)';
+    ctx.lineWidth = shadowWidth;
+    ctx.beginPath();
+    ctx.moveTo(px - dx, py - dy);
+    ctx.lineTo(px + dx, py + dy);
+    ctx.stroke();
+    // Colored fill on top.
+    ctx.strokeStyle = fillColor;
+    ctx.lineWidth = strokeWidth;
     ctx.beginPath();
     ctx.moveTo(px - dx, py - dy);
     ctx.lineTo(px + dx, py + dy);
@@ -693,33 +723,45 @@
     for (const f of state.features) {
       const px = cx + f.x * r;
       const py = cy + f.y * r;
-      const length = Math.min(60, 12 + f.quality * 1.5);
+      // Length scales with quality. Larger range than before so high-quality
+      // (Deep tier on a near-rupture event = quality ~24) features read as
+      // distinctly massive vs. a low-quality (Normal on a young event) one.
+      const length = clamp(18 + f.quality * 2.4, 18, 80);
       const ang = Math.atan2(f.y, f.x);
       const dx = Math.cos(ang) * length * 0.5;
       const dy = Math.sin(ang) * length * 0.5;
 
-      // Subtle dark base shadow for depth
-      ctx.strokeStyle = 'rgba(20, 14, 10, 0.55)';
-      ctx.lineWidth = 4.5;
+      // Outer warm halo — wide and soft, lifts the ridge off the crust.
+      ctx.strokeStyle = 'rgba(255, 200, 130, 0.30)';
+      ctx.lineWidth = 12;
+      ctx.beginPath();
+      ctx.moveTo(px - dx, py - dy);
+      ctx.lineTo(px + dx, py + dy);
+      ctx.stroke();
+
+      // Dark shadow stroke — outlines the ridge so it reads against the
+      // bright Hadean / pale Stillness epochs alike.
+      ctx.strokeStyle = 'rgba(20, 14, 10, 0.85)';
+      ctx.lineWidth = 6;
       ctx.beginPath();
       ctx.moveTo(px - dx + 0.5, py - dy + 1);
       ctx.lineTo(px + dx + 0.5, py + dy + 1);
       ctx.stroke();
 
-      // Warm halo
-      ctx.strokeStyle = 'rgba(220, 170, 110, 0.35)';
-      ctx.lineWidth = 7;
+      // Bright ridge crest — the visible spine of the new mountain.
+      ctx.strokeStyle = 'rgba(245, 230, 200, 0.95)';
+      ctx.lineWidth = 3.5;
       ctx.beginPath();
       ctx.moveTo(px - dx, py - dy);
       ctx.lineTo(px + dx, py + dy);
       ctx.stroke();
 
-      // Bright ridge line
-      ctx.strokeStyle = 'rgba(220, 200, 165, 0.85)';
-      ctx.lineWidth = 2.5;
+      // Thin lit highlight — top edge catches the light.
+      ctx.strokeStyle = 'rgba(255, 250, 230, 0.7)';
+      ctx.lineWidth = 1.2;
       ctx.beginPath();
-      ctx.moveTo(px - dx, py - dy);
-      ctx.lineTo(px + dx, py + dy);
+      ctx.moveTo(px - dx, py - dy - 1);
+      ctx.lineTo(px + dx, py + dy - 1);
       ctx.stroke();
     }
     ctx.restore();
@@ -767,6 +809,61 @@
     ctx.restore();
 
     drawChargeIndicator();
+    drawLastResolution();
+  }
+
+  // Floating-delta + ring feedback at the most recent event resolution
+  // (handled or scarred). Lives ~1.6s, drifts upward, fades. The single
+  // most informative bit of feedback in the loop: did the planet just
+  // gain or lose, and by how much.
+  function drawLastResolution() {
+    const lr = state.lastResolution;
+    if (!lr) return;
+    const { cx, cy, r } = view;
+    const LIFETIME_MS = 1600;
+    const age = performance.now() - lr.bornAt;
+    const life = Math.max(0, 1 - age / LIFETIME_MS);
+    if (life <= 0) { state.lastResolution = null; return; }
+
+    const px = cx + lr.x * r;
+    const py = cy + lr.y * r;
+    const handled = lr.kind === 'handled';
+
+    ctx.save();
+
+    // Expanding ring — warm tan for handled releases, dark red for ruptures
+    const ringColor = handled
+      ? `rgba(245, 220, 180, ${0.85 * life})`
+      : `rgba(220, 80, 60, ${0.8 * life})`;
+    ctx.strokeStyle = ringColor;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(px, py, 8 + (1 - life) * 24, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Floating delta number — drifts upward and fades. The most important
+    // immediate read: did this event help or hurt, and by how much.
+    const rise = (1 - life) * 36;
+    const fontSize = Math.max(20, Math.round(r * 0.13));
+    const sign = lr.delta >= 0 ? '+' : '';
+    const txt = `${sign}${lr.delta.toFixed(1)}`;
+    const textAlpha = Math.min(1, life * 1.6);
+    const tx = px;
+    const ty = py - 18 - rise;
+    ctx.font = `700 ${fontSize}px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    // Black outline via 4-direction offset — legible on every palette.
+    ctx.fillStyle = `rgba(0, 0, 0, ${0.8 * textAlpha})`;
+    for (const [ox, oy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [1, 1], [-1, -1]]) {
+      ctx.fillText(txt, tx + ox, ty + oy);
+    }
+    ctx.fillStyle = handled
+      ? `rgba(140, 230, 160, ${textAlpha})`
+      : `rgba(245, 110, 95, ${textAlpha})`;
+    ctx.fillText(txt, tx, ty);
+
+    ctx.restore();
   }
 
   // Pie-chart charge ring — appears at the pointerdown location and fills
@@ -879,7 +976,7 @@
       const pct = Math.floor((state.influence / RELEASE_COST) * 100);
       els.hint.textContent = `cresting — will ${pct}% (it will rupture without you)`;
     } else if (noEvents && ready) {
-      els.hint.textContent = 'the crust rests — wait for a stress to appear';
+      els.hint.textContent = 'your crust is quiet — waiting for stress to build';
     } else if (ready) {
       els.hint.textContent = 'tap an event to release — hold for a heavier outcome';
     } else {
