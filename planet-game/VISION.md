@@ -50,6 +50,70 @@ These silently determine what's possible in later epochs.
 
 ---
 
+## Design Pivot: Events, Not Ticks
+
+**Status:** Locked-in direction (post-playtest pivot). Current code is "ticks-not-events"; this section describes the rebuild target.
+
+### Why pivot
+
+After the volcanic + charged-tap layers shipped, playtest verdict: *underwhelming, no good core loops*. Diagnosis: every action lands the same magnitude (+2 to +10 stability), nothing builds visibly toward a climax, no real stakes, nothing surprises on return. The game has architecture (two forces in tension, epochal arc, planetary identity) but no moments of drama. Players were doing arithmetic, not witnessing geology.
+
+### Core shift
+
+Hidden gauges (Pressure, Volcanic) go away. The map gains *living things* — discrete events with visible position and ripeness. Player triages. Stability only changes via event resolutions.
+
+### Two timescales
+
+**Minor events** (45-120 seconds): stressed faults, small plumes. Each has 4-5 discrete visual stages — hairline → fissure → glowing crack → pulsing → rupture. Cap of 5 simultaneous on screen; spawn pauses when queue is full (this is also the idle-damage bound).
+
+**Major events** (8-20 minutes, span sessions): orogeny (mountain-building), supervolcano, rifting (continent splitting), glacial advance/retreat (cold epochs only). Tick across days of real time. *You log in and the Western Rift you've been watching is at 60% — was 40% yesterday.* Resolve into permanent terrain changes.
+
+### Terrain becomes mutable
+
+Today the planet's silhouette is fixed. In this version, eruptions raise basalt patches, orogeny raises mountain ranges, rifts lower and split, glaciation carves valleys. Terrain canvas re-bakes after each major-event resolution.
+
+Across 10 epochs the planet's silhouette visibly changes. The map becomes your autobiography. Hovering a feature shows *"raised in epoch 3 by volcanic vent."* No two players' planets look the same after epoch 5.
+
+### Stability mechanics (tuning targets)
+
+| Outcome | Δ stability |
+|---|---|
+| Well-handled event (active, charged appropriately) | +5 to +15 |
+| Auto-resolved (player let it run to maturity untended) | -3 to -10 |
+| Old terrain feature (>1 epoch old) | small passive +stability tick (anchor) |
+
+Spawn cadence: ~1 event per 30-60s during active play. Idle damage bounded by the 5-event cap.
+
+### Three session phases
+
+1. **Active triage** — you have Will, events ripen, you choose what to handle and how charged
+2. **Forced spectatorship** — Will depleted, you watch consequences land (this is where the missing drama lives — you can *see* the bad thing coming and can't stop it)
+3. **Idle** — tab closed, planet keeps living, you return to a changed map
+
+### Strategic shape
+
+- **Reading terrain is a real skill** — the map telegraphs future events. Convergent zones reveal where future orogeny will spawn. Volcanic chains seed future hotspots. The map is the spawn-bias map.
+- **Early choices echo into late epochs** — a volcanic ridge built in epoch 3 is a plume nursery in epoch 7
+- **Climate coupling per epoch** — mountains block glaciers; ridges become reefs in life epochs; rifts channel ice
+- **Compound interest on stability** — old geology pays passive anchor, rewarding long-game over short-game
+
+### What survives from current build
+
+- 10-epoch arc with palette shifts
+- Faults as permanent geological memory (Law II)
+- First-person identity ("you are the planet") — events are *your stresses*, not external threats
+- Charged-tap mechanic, *reframed*: charge tier = depth of intervention (light touch / moderate / forceful suppression). Same ×1/×2/×3 multiplier idea.
+- Will as the action currency
+
+### What gets thrown out
+
+- Pressure gauge (replaced by individual fault timers)
+- Volcanic gauge (replaced by individual plume maturities)
+- "Tap anywhere to release" (taps must hit events; tap precision fudged with proximity-snap)
+- Auto-tick stability change (only event resolutions move stability)
+
+---
+
 ## Open Questions
 
 - Visual layer: top-down map, cross-section, or abstract?
