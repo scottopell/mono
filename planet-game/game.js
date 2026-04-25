@@ -107,6 +107,11 @@
   const OROGENY_AXIS_DIST_MAX = 0.55;                  // longest axis
   const OROGENY_DETECT_ATTEMPTS = 30;                  // how many random pairs to try before giving up
 
+  // PR 4 phase C: terrain mutation
+  const OROGENY_RIDGE_AMPLITUDE = 0.15;     // elevation added at the spine of a handled orogeny
+  const OROGENY_SCAR_AMPLITUDE = -0.18;     // elevation removed at the spine of an auto-resolved orogeny
+  const OROGENY_MOD_WIDTH = 0.10;           // perpendicular extent of the mod (normalized planet radii)
+
   // Law V tuning — density is now 2D, measured at the actual release point
   const DENSITY_SIGMA = 0.3;         // fraction of planet radius — how wide each fault's influence spreads
   const DENSITY_SCARRING_CAP = 1.5;  // saturation point for "how scarred" this area is
@@ -154,6 +159,7 @@
     events: [],          // {kind, x, y, spawnedAt, lifetime, status: 'active'}
     features: [],        // {kind, x, y, quality, bornInEpoch}
     scars: [],           // {x, y, damage, bornInEpoch, sourceEvent: null}
+    terrainMods: [],     // [{type: 'orogenicRange'|'orogenicScar', x1, y1, x2, y2, width, amplitude, bornInEpoch}]
     epochAnchor: 50,
     epoch: 1,
     lastSpawnAt: 0,                  // ms timestamp of most recent spawn
@@ -180,6 +186,7 @@
         events: state.events,
         features: state.features,
         scars: state.scars,
+        terrainMods: state.terrainMods,
         epochAnchor: state.epochAnchor,
         lastSpawnAt: state.lastSpawnAt,
         nextSpawnIntervalMs: state.nextSpawnIntervalMs,
@@ -212,6 +219,10 @@
     state.events      = Array.isArray(saved.events) ? saved.events : [];
     state.features    = Array.isArray(saved.features) ? saved.features : [];
     state.scars       = Array.isArray(saved.scars) ? saved.scars : [];
+    // PR 4 phase C: terrain mods — additive to v3 saves; default to [] when
+    // the save predates this field so v3 saves keep loading without bumping
+    // SAVE_VERSION (empty mods preserves all v3 behavior).
+    state.terrainMods = Array.isArray(saved.terrainMods) ? saved.terrainMods : [];
     state.epochAnchor = Number.isFinite(saved.epochAnchor) ? saved.epochAnchor : 50;
     state.lastSpawnAt = Number.isFinite(saved.lastSpawnAt) ? saved.lastSpawnAt : 0;
     state.nextSpawnIntervalMs = Number.isFinite(saved.nextSpawnIntervalMs) ? saved.nextSpawnIntervalMs : 0;
@@ -281,6 +292,24 @@
       d += s.damage * Math.exp(-(dx * dx + dy * dy) / s2);
     }
     return d;
+  }
+
+  // PR 4 phase C: distance from a point (px, py) to the line segment
+  // (x1, y1)-(x2, y2) in the same 2D normalized-planet space. Used by
+  // bakeTerrain to figure out how far each pixel is from a terrainMod's
+  // axis so the mod's amplitude can fall off smoothly toward the edges.
+  function distanceToSegment(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1;
+    const len2 = dx * dx + dy * dy;
+    if (len2 === 0) {
+      const ex = px - x1, ey = py - y1;
+      return Math.sqrt(ex * ex + ey * ey);
+    }
+    let t = ((px - x1) * dx + (py - y1) * dy) / len2;
+    t = clamp(t, 0, 1);
+    const cx = x1 + t * dx, cy = y1 + t * dy;
+    const ex = px - cx, ey = py - cy;
+    return Math.sqrt(ex * ex + ey * ey);
   }
 
   // Uniform random point on the planet disk.
@@ -472,6 +501,23 @@
       sourceEvent: event.kind,
     });
     event.status = 'resolved_auto';
+
+    // PR 4 phase C: an auto-resolved Orogeny gouges the terrain. The
+    // big Scar above still counts against stability; this mod is the
+    // *visual* — a depression along the convergent axis, baked into
+    // the terrain on the next bake.
+    if (event.kind === 'Orogeny' && event.x1 != null) {
+      state.terrainMods.push({
+        type: 'orogenicScar',
+        x1: event.x1, y1: event.y1,
+        x2: event.x2, y2: event.y2,
+        width: OROGENY_MOD_WIDTH,
+        amplitude: OROGENY_SCAR_AMPLITUDE,
+        bornInEpoch: state.epoch,
+      });
+      bakeTerrain();
+    }
+
     pushLog({
       ageTicks: state.ageTicks,
       scarred: true,
@@ -611,6 +657,22 @@
       bornInEpoch: state.epoch,
     });
     event.status = 'resolved_handled';
+
+    // PR 4 phase C: a handled Orogeny mutates the terrain canvas. The
+    // feature record above counts toward stability; this mod is the
+    // *visual* — it raises a permanent mountain ridge along the
+    // convergent axis, baked into the terrain on the next bake.
+    if (isOrogeny && event.x1 != null) {
+      state.terrainMods.push({
+        type: 'orogenicRange',
+        x1: event.x1, y1: event.y1,
+        x2: event.x2, y2: event.y2,
+        width: OROGENY_MOD_WIDTH,
+        amplitude: OROGENY_RIDGE_AMPLITUDE,
+        bornInEpoch: state.epoch,
+      });
+      bakeTerrain();
+    }
 
     let scarsHealed = 0;
     let damageHealed = 0;
@@ -825,6 +887,23 @@
         const rimPull = 0.28 * d2 * d2;
         const h = fbm(nx * NOISE_SCALE, ny * NOISE_SCALE, seed) - rimPull;
 
+        // PR 4 phase C: apply persistent terrain mods. Each mod is an
+        // axis segment in normalized planet coords with a perpendicular
+        // width and a positive (handled orogeny → ridge) or negative
+        // (auto-resolved orogeny → scar gouge) amplitude. Smoothstep
+        // falloff from the spine to the edge so ridges/scars blend into
+        // the underlying noise rather than read as hard-edged stamps.
+        let mh = h;
+        for (const mod of state.terrainMods) {
+          if (mod.type !== 'orogenicRange' && mod.type !== 'orogenicScar') continue;
+          const d = distanceToSegment(nx, ny, mod.x1, mod.y1, mod.x2, mod.y2);
+          if (d < mod.width) {
+            const falloff = 1 - (d / mod.width);
+            const smooth = falloff * falloff * (3 - 2 * falloff);
+            mh += mod.amplitude * smooth;
+          }
+        }
+
         // Directional lighting: top-left lit, bottom-right shaded.
         const light = 0.55 - nx * 0.32 - ny * 0.42;
         const shade = Math.max(0.42, Math.min(1.08, 0.78 + light * 0.55));
@@ -832,7 +911,7 @@
         // Limb darkening: subtle falloff near the circumference adds sphericality.
         const limb = 1 - 0.28 * d2;
 
-        const [r, g, b] = heightToColor(h);
+        const [r, g, b] = heightToColor(mh);
         const k = shade * limb;
         const rr = r * k * tr, gg = g * k * tg, bb = b * k * tb;
         const inv = 1 - tw;
