@@ -93,6 +93,20 @@
   const SACRIFICE_NUDGE_MAX_FRAC = 0.5;              // cap nudge at 50% of event's lifetime
   const SACRIFICE_TAP_SNAP_RADIUS = 0.10;            // smaller than EVENT_TAP_SNAP_RADIUS (0.18) — features are smaller targets
 
+  // PR 4: Orogeny — first major event. Multi-session timescale (8-20
+  // minutes); resolves into a permanent mountain range (terrain mutation
+  // in Phase C). Spawns at convergent zones — pairs of land masses
+  // pressing across narrow ocean.
+  const MAJOR_EVENT_LIFETIME_MIN_MS = 8 * 60 * 1000;   // 8 min
+  const MAJOR_EVENT_LIFETIME_MAX_MS = 20 * 60 * 1000;  // 20 min
+  const OROGENY_SPAWN_PROB = 0.20;                     // base probability when conditions hold
+  const OROGENY_MIN_EPOCH = 2;                         // Hadean has no continents yet; wait until Archean
+  const OROGENY_LAND_HEIGHT_MIN = 0.55;                // height threshold for "this is land" (matches heightToColor)
+  const OROGENY_OCEAN_HEIGHT_MAX = 0.50;               // height threshold for "this is ocean/lowland"
+  const OROGENY_AXIS_DIST_MIN = 0.20;                  // shortest axis between convergent points (normalized)
+  const OROGENY_AXIS_DIST_MAX = 0.55;                  // longest axis
+  const OROGENY_DETECT_ATTEMPTS = 30;                  // how many random pairs to try before giving up
+
   // Law V tuning — density is now 2D, measured at the actual release point
   const DENSITY_SIGMA = 0.3;         // fraction of planet radius — how wide each fault's influence spreads
   const DENSITY_SCARRING_CAP = 1.5;  // saturation point for "how scarred" this area is
@@ -316,16 +330,56 @@
     return candidates[candidates.length - 1].p;
   }
 
-  // Choose which kind of event to spawn next. Below the scar-density
-  // threshold, only StressedFault. Above it, 50/50 between StressedFault
-  // and BuildingPlume — the strategic inversion of PR 2: scarring isn't
-  // pure loss, it's fuel for the volcanic repair cycle. Empty planet sees
-  // only faults; accumulated scarring opens the plume valve.
+  // PR 4: KISS convergent-zone detection for Orogeny spawn. Pick a random
+  // land point P1, then probe nearby for a second land point P2 whose
+  // midpoint with P1 sits over ocean/lowland (the "narrow ocean between
+  // continents" telegraph). Returns {x1, y1, x2, y2} or null if no
+  // qualifying pair found in OROGENY_DETECT_ATTEMPTS tries.
   //
-  // "Average scar density" normalises total damage so that 30 total damage
-  // saturates to 1.0 — picked to roughly match "the planet looks pretty
-  // scarred" by the time plumes start flowing.
+  // Deliberately simple. heightAt() requires fbm sampling, so attempts
+  // are bounded; on a normal-noise planet with continents most attempts
+  // succeed within a handful of tries. Return null is the rare "this
+  // planet has no candidate convergent zones right now" signal — the
+  // caller falls back to a different event kind.
+  function findConvergentZone() {
+    for (let attempt = 0; attempt < OROGENY_DETECT_ATTEMPTS; attempt++) {
+      // Step 1: random point that is unambiguously land
+      const p1 = randomDiskPoint();
+      if (heightAt(p1.x, p1.y) < OROGENY_LAND_HEIGHT_MIN) continue;
+      // Step 2: nearby second land point. Sample with a moderate offset.
+      const ang = Math.random() * Math.PI * 2;
+      const dist = OROGENY_AXIS_DIST_MIN
+        + Math.random() * (OROGENY_AXIS_DIST_MAX - OROGENY_AXIS_DIST_MIN);
+      const p2 = { x: p1.x + Math.cos(ang) * dist, y: p1.y + Math.sin(ang) * dist };
+      if (p2.x * p2.x + p2.y * p2.y > 0.95) continue;  // p2 must be inside the disc
+      if (heightAt(p2.x, p2.y) < OROGENY_LAND_HEIGHT_MIN) continue;
+      // Step 3: midpoint must be lower than either land mass — that's the
+      // "narrow ocean / lowland between them" telegraph.
+      const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+      if (heightAt(mid.x, mid.y) > OROGENY_OCEAN_HEIGHT_MAX) continue;
+      return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+    }
+    return null;
+  }
+
+  // Choose which kind of event to spawn next. Three-way selection in
+  // priority order:
+  //   1. Orogeny — rarest. Gated on epoch (>= Archean) since the Hadean
+  //      has no continents to converge yet. Independent of scarring;
+  //      whether a convergent zone exists is checked at spawn time.
+  //   2. BuildingPlume — fueled by accumulated scar density.
+  //   3. StressedFault — fallback. Cracks form on virgin or scarred crust.
+  //
+  // The probabilities chain (each gate is a Math.random() draw) so practical
+  // orogeny spawn rate stays low: ~20% of post-Archean spawn attempts.
   function pickEventKind() {
+    // Orogeny — rare, only after Archean (epoch >= 2). Independent of
+    // scarring; depends on whether convergent zones exist (checked at
+    // spawn time, not here).
+    if (state.epoch >= OROGENY_MIN_EPOCH && Math.random() < OROGENY_SPAWN_PROB) {
+      return 'Orogeny';
+    }
+    // Plume — fueled by scarring (existing logic)
     let totalDamage = 0;
     for (const s of state.scars) totalDamage += s.damage;
     // Clamped to [0, 1] so the comparison with PLUME_SPAWN_THRESHOLD has
@@ -342,22 +396,47 @@
   // randomised interval. Kind is chosen by pickEventKind (scar-density
   // gated); lifetime range is per-kind — plumes ripen slower than faults
   // since they're a slower "vent" phenomenon.
+  //
+  // Orogeny is special: needs a convergent zone (pair of land masses
+  // across narrow ocean). Find one first; if no convergent zone exists
+  // on this planet right now, fall back to StressedFault so we don't
+  // waste the spawn slot. The convergent axis is persisted on the event
+  // (x1, y1, x2, y2) and the event's center position is the axis midpoint.
   function spawnEvent() {
     if (state.events.length >= MAX_ACTIVE_EVENTS) return;
-    const kind = pickEventKind();
-    const pos = pickSpawnPosition(kind);
-    const lifetime = kind === 'BuildingPlume'
-      ? pickRandomInRange(PLUME_LIFETIME_MIN_MS, PLUME_LIFETIME_MAX_MS)
-      : pickRandomInRange(MINOR_EVENT_LIFETIME_MIN_MS, MINOR_EVENT_LIFETIME_MAX_MS);
+    let kind = pickEventKind();
+    let axis = null;
+    if (kind === 'Orogeny') {
+      axis = findConvergentZone();
+      if (!axis) {
+        // Convergent zone search came up empty — fall back to a fault so
+        // we don't waste this spawn slot.
+        kind = 'StressedFault';
+      }
+    }
+    const pos = axis
+      ? { x: (axis.x1 + axis.x2) / 2, y: (axis.y1 + axis.y2) / 2 }
+      : pickSpawnPosition(kind);
+    const lifetime = (kind === 'Orogeny')
+      ? pickRandomInRange(MAJOR_EVENT_LIFETIME_MIN_MS, MAJOR_EVENT_LIFETIME_MAX_MS)
+      : pickRandomInRange(
+          kind === 'BuildingPlume' ? PLUME_LIFETIME_MIN_MS : MINOR_EVENT_LIFETIME_MIN_MS,
+          kind === 'BuildingPlume' ? PLUME_LIFETIME_MAX_MS : MINOR_EVENT_LIFETIME_MAX_MS
+        );
     const now = Date.now();
-    state.events.push({
+    const event = {
       kind,
       x: pos.x,
       y: pos.y,
       spawnedAt: now,            // Date.now() so reloads don't stall ripening
       lifetime,
       status: 'active',
-    });
+    };
+    if (axis) {
+      event.x1 = axis.x1; event.y1 = axis.y1;
+      event.x2 = axis.x2; event.y2 = axis.y2;
+    }
+    state.events.push(event);
     state.lastSpawnAt = now;
     state.nextSpawnIntervalMs = pickRandomInRange(SPAWN_INTERVAL_MIN_MS, SPAWN_INTERVAL_MAX_MS);
   }
@@ -372,11 +451,18 @@
   // 'resolved_auto' so the next sweep filters it out of state.events.
   // Damage range is per-kind: an unhandled BuildingPlume erupts and does
   // significantly more damage than an unhandled StressedFault, raising
-  // the stakes of letting plumes ripen out unattended.
+  // the stakes of letting plumes ripen out unattended. Orogenies that
+  // erupt unchecked are catastrophic — the largest unhandled-event scar.
+  // (Phase C will add terrain mutation here as well; for now: just scar.)
   function autoResolveEvent(event) {
-    const [dmgMin, dmgMax] = event.kind === 'BuildingPlume'
-      ? [PLUME_AUTO_DAMAGE_MIN, PLUME_AUTO_DAMAGE_MAX]
-      : [SCAR_DAMAGE_MIN, SCAR_DAMAGE_MAX];
+    let dmgMin, dmgMax;
+    if (event.kind === 'Orogeny') {
+      dmgMin = 15; dmgMax = 25;
+    } else if (event.kind === 'BuildingPlume') {
+      dmgMin = PLUME_AUTO_DAMAGE_MIN; dmgMax = PLUME_AUTO_DAMAGE_MAX;
+    } else {
+      dmgMin = SCAR_DAMAGE_MIN; dmgMax = SCAR_DAMAGE_MAX;
+    }
     const damage = pickRandomInRange(dmgMin, dmgMax);
     state.scars.push({
       x: event.x,
@@ -492,6 +578,11 @@
   //     SCAR_PRUNE_THRESHOLD is removed entirely. This is the strategic
   //     loop closure — accumulating scars is *fuel* for plume-driven
   //     repair, not a one-way slide.
+  //   - Orogeny → OrogenicRange (mountain range along the convergent
+  //     axis). Slow-ripening, big reward — quality is scaled by 2.5x
+  //     to reflect 8-20 minute investment. Phase C will additionally
+  //     mutate the heightfield to raise mountains visually; Phase A just
+  //     produces the feature record at the right scale.
   // The event is flagged 'resolved_handled' so the tick-loop sweep removes it.
   function handleEvent(event, tier) {
     if (event.status !== 'active') return false;
@@ -499,11 +590,21 @@
     state.influence -= tier.will;
     const maturity = eventMaturity(event);
     const isPlume = event.kind === 'BuildingPlume';
-    const quality = isPlume
-      ? maturity * tier.mult * FEATURE_QUALITY_BASE * PLUME_FEATURE_QUALITY_MULT
-      : maturity * tier.mult * FEATURE_QUALITY_BASE;
+    const isOrogeny = event.kind === 'Orogeny';
+    let quality, featureKind;
+    if (isOrogeny) {
+      // Orogenies are slow-ripening; reward is large for the patient (2.5x).
+      quality = maturity * tier.mult * FEATURE_QUALITY_BASE * 2.5;
+      featureKind = 'OrogenicRange';
+    } else if (isPlume) {
+      quality = maturity * tier.mult * FEATURE_QUALITY_BASE * PLUME_FEATURE_QUALITY_MULT;
+      featureKind = 'BasaltPatch';
+    } else {
+      quality = maturity * tier.mult * FEATURE_QUALITY_BASE;
+      featureKind = 'VolcanicRidge';
+    }
     state.features.push({
-      kind: isPlume ? 'BasaltPatch' : 'VolcanicRidge',
+      kind: featureKind,
       x: event.x,
       y: event.y,
       quality,
@@ -669,6 +770,16 @@
       freq *= 2;
     }
     return sum / norm;
+  }
+
+  // Heightfield query at runtime — same formula as bakeTerrain so that
+  // "this point is land" agrees with what's drawn. Returns elevation in
+  // roughly [0, 1].
+  function heightAt(x, y) {
+    const d2 = x * x + y * y;
+    if (d2 > 1) return 0;
+    const rimPull = 0.28 * d2 * d2;  // matches bakeTerrain
+    return fbm(x * NOISE_SCALE, y * NOISE_SCALE, state.planetSeed) - rimPull;
   }
 
   // Elevation → RGB palette. Biomes are ordered so continents sit above
