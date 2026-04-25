@@ -1,16 +1,27 @@
-// Planet Game — events-not-ticks rewrite, Phase 1 (rip-out + data model).
+// Planet Game — events-not-ticks loop. PR 1 foundation.
 // See spec.allium for the target domain shape and ROADMAP.md for the slice plan.
 //
-// Phase 1 strips the old Pressure/Volcanic mechanics and installs the new
-// state arrays (events / features / scars) plus epochAnchor. The game loads
-// without errors but taps are no-ops — Phase 2 wires up event spawning and
-// the handle-event tap path.
+// Loop:
+//   - StressedFault events spawn at 30-60s cadence, biased toward existing
+//     scarring; capped at 5 active.
+//   - Each event ripens through 5 visible stages over a 45-120s lifetime.
+//   - Tap an event before it ruptures → permanent TerrainFeature + stability gain.
+//     Ignore it → permanent Scar + stability loss.
+//   - Stability is DERIVED from the map: epochAnchor + Σ feature.quality
+//     − Σ scar.damage, clamped [0, 100]. epochAnchor adjusts on epoch
+//     advance so stability snaps to STABILITY_AFTER_ADVANCE while geology
+//     persists.
 //
-// Surviving infrastructure:
+// Persistable timestamps use Date.now() so events / spawn cadence survive
+// page reloads. Ephemeral UI timing (charge ring, drawLastResolution
+// animation) keeps performance.now() — never persisted.
+//
+// Surviving infrastructure from the prior tick-based build:
 //   - Time loop (driveLoop + MAX_CATCHUP_MS catchup, Law I)
 //   - Terrain bake + epoch palette tinting (Law II / VI)
-//   - Charged-tap UX (CHARGE_TIERS, drawChargeIndicator) — reframed in Phase 2
-//   - localStorage persistence (SAVE_VERSION bumped to 2; v1 saves drop)
+//   - Charged-tap UX (CHARGE_TIERS, drawChargeIndicator) — now applied to
+//     event handle taps, multiplier scales feature quality
+//   - localStorage persistence (SAVE_VERSION bumped to 3; older saves drop)
 (() => {
   'use strict';
 
@@ -83,7 +94,10 @@
   const epochInfo = (n) => EPOCHS[clamp(n, 1, MAX_EPOCH) - 1];
 
   const SAVE_KEY = 'planet-game:save';
-  const SAVE_VERSION = 2;
+  // v3: persisted timestamps (spawnedAt, lastSpawnAt) switched to Date.now().
+  // performance.now() resets per page load, which made events stall after a
+  // reload. Date.now() is monotonic across reloads.
+  const SAVE_VERSION = 3;
   const SAVE_INTERVAL_MS = 1000;
 
   const state = {
@@ -267,23 +281,23 @@
     if (state.events.length >= MAX_ACTIVE_EVENTS) return;
     const pos = pickSpawnPosition();
     const lifetime = pickRandomInRange(MINOR_EVENT_LIFETIME_MIN_MS, MINOR_EVENT_LIFETIME_MAX_MS);
+    const now = Date.now();
     state.events.push({
       kind: 'StressedFault',     // only event type in PR 1; v1 spec lists 5 more for later phases
       x: pos.x,
       y: pos.y,
-      spawnedAt: performance.now(),
+      spawnedAt: now,            // Date.now() so reloads don't stall ripening
       lifetime,
       status: 'active',
     });
-    state.lastSpawnAt = performance.now();
+    state.lastSpawnAt = now;
     state.nextSpawnIntervalMs = pickRandomInRange(SPAWN_INTERVAL_MIN_MS, SPAWN_INTERVAL_MAX_MS);
   }
 
   // Event ripeness in [0, 1]. 0 = just spawned, 1 = ready to auto-resolve.
-  // Read off wall-clock so backgrounded tabs catch up correctly when the
-  // tick loop drains its accumulator.
+  // Date.now() so the persisted spawnedAt stays meaningful across reloads.
   function eventMaturity(event) {
-    return clamp((performance.now() - event.spawnedAt) / event.lifetime, 0, 1);
+    return clamp((Date.now() - event.spawnedAt) / event.lifetime, 0, 1);
   }
 
   // Convert a fully-mature active event into a Scar. Status flips to
@@ -485,13 +499,14 @@
     state.influence += INFLUENCE_BASE * dt;
 
     // Spawn cadence — fire a spawn attempt when the next interval has elapsed
-    // and the queue has room.
-    const now = performance.now();
+    // and the queue has room. Date.now() so the comparison with the
+    // persisted lastSpawnAt is meaningful across reloads.
+    const wallNow = Date.now();
     if (state.lastSpawnAt === 0) {
-      state.lastSpawnAt = now;
+      state.lastSpawnAt = wallNow;
       state.nextSpawnIntervalMs = pickRandomInRange(SPAWN_INTERVAL_MIN_MS, SPAWN_INTERVAL_MAX_MS);
     }
-    if (now - state.lastSpawnAt >= state.nextSpawnIntervalMs && state.events.length < MAX_ACTIVE_EVENTS) {
+    if (wallNow - state.lastSpawnAt >= state.nextSpawnIntervalMs && state.events.length < MAX_ACTIVE_EVENTS) {
       spawnEvent();
     }
 
