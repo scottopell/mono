@@ -481,8 +481,9 @@
   // Damage range is per-kind: an unhandled BuildingPlume erupts and does
   // significantly more damage than an unhandled StressedFault, raising
   // the stakes of letting plumes ripen out unattended. Orogenies that
-  // erupt unchecked are catastrophic — the largest unhandled-event scar.
-  // (Phase C will add terrain mutation here as well; for now: just scar.)
+  // erupt unchecked are catastrophic — the largest unhandled-event scar,
+  // and they additionally gouge a depression along the convergent axis
+  // via the terrainMod / bakeTerrain path below.
   function autoResolveEvent(event) {
     let dmgMin, dmgMax;
     if (event.kind === 'Orogeny') {
@@ -540,8 +541,17 @@
     let best = null, bestD2 = EVENT_TAP_SNAP_RADIUS * EVENT_TAP_SNAP_RADIUS;
     for (const event of state.events) {
       if (event.status !== 'active') continue;
-      const dx = event.x - px, dy = event.y - py;
-      const d2 = dx * dx + dy * dy;
+      let d2;
+      if (event.kind === 'Orogeny' && event.x1 != null) {
+        // Orogeny renders as a long axis segment; hit-test against the
+        // segment so taps near either endpoint of the visible ridge
+        // count, not just the midpoint.
+        const d = distanceToSegment(px, py, event.x1, event.y1, event.x2, event.y2);
+        d2 = d * d;
+      } else {
+        const dx = event.x - px, dy = event.y - py;
+        d2 = dx * dx + dy * dy;
+      }
       if (d2 < bestD2) { best = event; bestD2 = d2; }
     }
     return best;
@@ -626,9 +636,9 @@
   //     repair, not a one-way slide.
   //   - Orogeny → OrogenicRange (mountain range along the convergent
   //     axis). Slow-ripening, big reward — quality is scaled by 2.5x
-  //     to reflect 8-20 minute investment. Phase C will additionally
-  //     mutate the heightfield to raise mountains visually; Phase A just
-  //     produces the feature record at the right scale.
+  //     to reflect 8-20 minute investment. Additionally records a
+  //     positive terrainMod and rebakes the canvas so the new ridge is
+  //     visibly baked into the planet's silhouette from this point on.
   // The event is flagged 'resolved_handled' so the tick-loop sweep removes it.
   function handleEvent(event, tier) {
     if (event.status !== 'active') return false;
@@ -841,7 +851,20 @@
     const d2 = x * x + y * y;
     if (d2 > 1) return 0;
     const rimPull = 0.28 * d2 * d2;  // matches bakeTerrain
-    return fbm(x * NOISE_SCALE, y * NOISE_SCALE, state.planetSeed) - rimPull;
+    let h = fbm(x * NOISE_SCALE, y * NOISE_SCALE, state.planetSeed) - rimPull;
+    // Apply persisted terrain mods so convergent-zone detection sees the
+    // ACTUAL drawn elevation, not the un-mutated noise. Without this, a
+    // long-running planet with many resolved orogenies would get repeated
+    // spawn attempts on land that's been raised into a single mass, or
+    // pick "ocean midpoints" that are now bridged by previous mountains.
+    for (const mod of state.terrainMods) {
+      const d = distanceToSegment(x, y, mod.x1, mod.y1, mod.x2, mod.y2);
+      if (d < mod.width) {
+        const falloff = 1 - d / mod.width;
+        h += mod.amplitude * smoothstep(falloff);
+      }
+    }
+    return h;
   }
 
   // Elevation → RGB palette. Biomes are ordered so continents sit above
@@ -874,6 +897,22 @@
     // put; the mood shifts.
     const [tr, tg, tb, tw] = epochInfo(state.epoch).tint;
 
+    // PR 4 phase C perf: pre-compute axis-segment bboxes once per bake so
+    // the per-pixel mod loop can reject most pixels via cheap range checks
+    // before invoking distanceToSegment. terrainMods grows over a long
+    // run; without this, bake cost is O(pixels × mods).
+    const activeMods = [];
+    for (const mod of state.terrainMods) {
+      if (mod.type !== 'orogenicRange' && mod.type !== 'orogenicScar') continue;
+      activeMods.push({
+        mod,
+        minX: Math.min(mod.x1, mod.x2) - mod.width,
+        maxX: Math.max(mod.x1, mod.x2) + mod.width,
+        minY: Math.min(mod.y1, mod.y2) - mod.width,
+        maxY: Math.max(mod.y1, mod.y2) + mod.width,
+      });
+    }
+
     for (let py = 0; py < TERRAIN_RES; py++) {
       for (let px = 0; px < TERRAIN_RES; px++) {
         const nx = (px - half) / half; // [-1, 1]
@@ -893,14 +932,15 @@
         // (auto-resolved orogeny → scar gouge) amplitude. Smoothstep
         // falloff from the spine to the edge so ridges/scars blend into
         // the underlying noise rather than read as hard-edged stamps.
+        // Bbox pre-filter (computed once per bake above) skips most
+        // pixels for each mod with a cheap range check.
         let mh = h;
-        for (const mod of state.terrainMods) {
-          if (mod.type !== 'orogenicRange' && mod.type !== 'orogenicScar') continue;
-          const d = distanceToSegment(nx, ny, mod.x1, mod.y1, mod.x2, mod.y2);
-          if (d < mod.width) {
-            const falloff = 1 - (d / mod.width);
-            const smooth = falloff * falloff * (3 - 2 * falloff);
-            mh += mod.amplitude * smooth;
+        for (const e of activeMods) {
+          if (nx < e.minX || nx > e.maxX || ny < e.minY || ny > e.maxY) continue;
+          const d = distanceToSegment(nx, ny, e.mod.x1, e.mod.y1, e.mod.x2, e.mod.y2);
+          if (d < e.mod.width) {
+            const falloff = 1 - (d / e.mod.width);
+            mh += e.mod.amplitude * smoothstep(falloff);
           }
         }
 
@@ -1113,8 +1153,7 @@
     const dx = bx - ax, dy = by - ay;
     const axisLen = Math.hypot(dx, dy);
     if (axisLen < 1) return;
-    const ux = dx / axisLen, uy = dy / axisLen;        // unit along the axis
-    const ppx = -uy, ppy = ux;                         // unit perpendicular
+    const ppx = -dy / axisLen, ppy = dx / axisLen;     // unit perpendicular to the axis
 
     // Subtle breath — slower than fault/plume because orogeny is
     // geological time, not heartbeat time.
