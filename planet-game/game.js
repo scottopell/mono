@@ -75,6 +75,16 @@
   const RESURFACE_STRENGTH = 0.65;         // 0..1 — fraction of damage scrubbed from a scar at center
   const SCAR_PRUNE_THRESHOLD = 1.0;        // scars below this damage after resurfacing get removed entirely
 
+  // PR 2: queue-full background scars — when the player can't open new
+  // event slots, ambient geological pressure manifests as direct damage
+  // to the densest scarred region. This bounds idle-window damage and
+  // prevents the queue cap from being weaponized as a "pause the world"
+  // exploit.
+  const BACKGROUND_SCAR_INTERVAL_MIN_MS = 45 * 1000;  // shortest gap between background scars
+  const BACKGROUND_SCAR_INTERVAL_MAX_MS = 75 * 1000;
+  const BACKGROUND_SCAR_DAMAGE_MIN = 1.5;             // smaller than fault auto-resolve damage (3-10)
+  const BACKGROUND_SCAR_DAMAGE_MAX = 4;               // intentionally smaller — these are ambient, not headline events
+
   // Law V tuning — density is now 2D, measured at the actual release point
   const DENSITY_SIGMA = 0.3;         // fraction of planet radius — how wide each fault's influence spreads
   const DENSITY_SCARRING_CAP = 1.5;  // saturation point for "how scarred" this area is
@@ -126,6 +136,8 @@
     epoch: 1,
     lastSpawnAt: 0,                  // ms timestamp of most recent spawn
     nextSpawnIntervalMs: 0,          // randomised interval until next spawn attempt
+    lastBackgroundScarAt: 0,         // ms timestamp of most recent background scar
+    nextBackgroundScarIntervalMs: 0, // randomised interval until next background scar attempt
     paused: false,
     log: [],
     planetSeed: (Math.random() * 0xffffffff) >>> 0,
@@ -149,6 +161,8 @@
         epochAnchor: state.epochAnchor,
         lastSpawnAt: state.lastSpawnAt,
         nextSpawnIntervalMs: state.nextSpawnIntervalMs,
+        lastBackgroundScarAt: state.lastBackgroundScarAt,
+        nextBackgroundScarIntervalMs: state.nextBackgroundScarIntervalMs,
         log: state.log,
       }));
     } catch (_) {
@@ -179,6 +193,8 @@
     state.epochAnchor = Number.isFinite(saved.epochAnchor) ? saved.epochAnchor : 50;
     state.lastSpawnAt = Number.isFinite(saved.lastSpawnAt) ? saved.lastSpawnAt : 0;
     state.nextSpawnIntervalMs = Number.isFinite(saved.nextSpawnIntervalMs) ? saved.nextSpawnIntervalMs : 0;
+    state.lastBackgroundScarAt = Number.isFinite(saved.lastBackgroundScarAt) ? saved.lastBackgroundScarAt : 0;
+    state.nextBackgroundScarIntervalMs = Number.isFinite(saved.nextBackgroundScarIntervalMs) ? saved.nextBackgroundScarIntervalMs : 0;
     state.log         = Array.isArray(saved.log) ? saved.log : [];
   }
 
@@ -470,6 +486,53 @@
     return true;
   }
 
+  // Drop an ambient "background" scar when the queue is full — bounds
+  // idle-window damage and prevents the queue cap from being weaponized
+  // as a "pause the world" exploit.
+  //
+  // Position strategy: pick uniformly at random from existing scars and
+  // perturb by ±0.05. This concentrates damage in already-scarred zones
+  // (the spec's HighestScarringRegion intent) without needing a full
+  // density-peak search. Fallback to randomDiskPoint() in the unlikely
+  // case the queue is full but no scars exist yet.
+  function dropBackgroundScar() {
+    let x, y;
+    if (state.scars.length > 0) {
+      const base = state.scars[Math.floor(Math.random() * state.scars.length)];
+      x = base.x + pickRandomInRange(-0.05, 0.05);
+      y = base.y + pickRandomInRange(-0.05, 0.05);
+    } else {
+      const p = randomDiskPoint();
+      x = p.x;
+      y = p.y;
+    }
+    const damage = pickRandomInRange(BACKGROUND_SCAR_DAMAGE_MIN, BACKGROUND_SCAR_DAMAGE_MAX);
+    state.scars.push({
+      x, y,
+      damage,
+      bornInEpoch: state.epoch,
+      sourceEvent: 'BackgroundPressure',
+    });
+    pushLog({
+      ageTicks: state.ageTicks,
+      backgroundScar: true,
+      damage,
+    });
+    state.lastBackgroundScarAt = Date.now();
+    state.nextBackgroundScarIntervalMs = pickRandomInRange(
+      BACKGROUND_SCAR_INTERVAL_MIN_MS, BACKGROUND_SCAR_INTERVAL_MAX_MS
+    );
+    // Drive the float-delta feedback so the player SEES damage land even
+    // when not interacting — makes the "queue is full and pressure is
+    // building" state legible rather than silent.
+    state.lastResolution = {
+      x, y,
+      kind: 'scarred',
+      delta: -damage,
+      bornAt: performance.now(),
+    };
+  }
+
   // Derived stability — computed from epochAnchor + sum(feature.quality)
   // - sum(scar.damage), clamped to [0, 100]. Replaces the old stored
   // state.stability field. epochAnchor absorbs the gap so post-advance
@@ -614,6 +677,25 @@
 
     // Sweep resolved events out of the active list
     state.events = state.events.filter(e => e.status === 'active');
+
+    // Queue-full background scars — when 5 events are live, ambient pressure
+    // drops a small scar in the densest scarred region every ~45-75s. Bounds
+    // idle damage; prevents the queue cap being weaponized as "pause the world."
+    const queueFull = state.events.length >= MAX_ACTIVE_EVENTS;
+    if (queueFull) {
+      if (state.lastBackgroundScarAt === 0) {
+        state.lastBackgroundScarAt = wallNow;
+        state.nextBackgroundScarIntervalMs = pickRandomInRange(
+          BACKGROUND_SCAR_INTERVAL_MIN_MS, BACKGROUND_SCAR_INTERVAL_MAX_MS
+        );
+      } else if (wallNow - state.lastBackgroundScarAt >= state.nextBackgroundScarIntervalMs) {
+        dropBackgroundScar();
+      }
+    } else {
+      // Reset the timer when queue clears so background scars don't fire
+      // immediately on the next queue-full episode (would feel punitive).
+      state.lastBackgroundScarAt = 0;
+    }
 
     // Auto-advance check — an auto-resolved event normally lowers stability,
     // but a tap-handled feature can push it past STABILITY_GOAL. Also
