@@ -47,6 +47,7 @@
     roomCodeDisplay: document.getElementById('room-code-display'),
     btnCancelHost: document.getElementById('btn-cancel-host'),
     btnShare: document.getElementById('btn-share'),
+    btnFullscreen: document.getElementById('btn-fullscreen'),
     canvas: document.getElementById('board'),
     gameRoot: document.getElementById('screen-game'),
     chromeLabel: document.getElementById('chrome-label'),
@@ -238,6 +239,7 @@
         if (isMyTurn()) handleWorldTap(msg.x, msg.y);
         break;
       case 'diceCommit':
+        ensureSessionForIncomingDiceMsg(msg);
         if (app.rollSession) app.rollSession.onPeerCommit(msg);
         else app.pendingDiceMsgs.push(msg);
         break;
@@ -405,22 +407,51 @@
     }
     if (app.rollSession) return;
     app.turnCounter = (app.turnCounter || 0) + 1;
+    startTurnRollSession(app.turnCounter);
+  }
+
+  // The protocol is symmetric — both phones run a session, exchange commits,
+  // then exchange reveals. The active phone kicks off via requestTurnRoll;
+  // the passive phone calls this on receiving the first incoming diceCommit
+  // (see ensureSessionForIncomingDiceMsg). Both sides derive the same dice
+  // and apply startRoll locally; only the active player broadcasts live so
+  // any later sub-moves stay in sync.
+  function startTurnRollSession(turnCounter) {
+    if (app.role === 'local') return;
+    if (app.rollSession) return;
+    if (!app.state || app.state.phase !== 'roll') return;
+    app.turnCounter = turnCounter;
     const session = diceProto.createRollSession({
       purpose: 'turn',
       count: 2,
-      turn: app.turnCounter,
+      turn: turnCounter,
       send: (m) => app.peerApi && app.peerApi.send(m),
       onDice: (vals) => {
         app.rollSession = null;
+        if (!app.state || app.state.phase !== 'roll') return;
         const next = rules.startRoll(app.state, vals);
         setState(next);
-        broadcastLiveState();
+        if (isMyTurn()) broadcastLiveState();
       },
       onAbort: (r) => { app.rollSession = null; abortSession(r); },
     });
     app.rollSession = session;
     session.start();
     drainPendingDice();
+  }
+
+  // Passive-side fallback: when a diceCommit arrives without a local
+  // session, try to spawn one so we can reciprocate. Without this, the
+  // active phone hangs forever waiting for our commit.
+  function ensureSessionForIncomingDiceMsg(msg) {
+    if (app.rollSession) return;
+    if (app.role === 'local') return;
+    if (!app.state) return;
+    if (msg.purpose === 'turn' && app.state.phase === 'roll') {
+      startTurnRollSession(msg.turn);
+    } else if (msg.purpose === 'opening' && app.state.phase === 'opening') {
+      beginOpeningRoll();
+    }
   }
 
   // --- Helpers for turn authority ---
@@ -723,6 +754,26 @@
 
   window.addEventListener('resize', resizeAndRender);
   window.addEventListener('orientationchange', resizeAndRender);
+
+  // Fullscreen toggle (browser chrome takes up a lot of room on phones).
+  // Uses the standard Fullscreen API; iOS Safari doesn't support it from a
+  // button in-page (only via "Add to Home Screen"), so we hide the toggle
+  // there. The iOS meta tags in index.html cover the standalone case.
+  (function wireFullscreen() {
+    const btn = el.btnFullscreen;
+    if (!btn) return;
+    const docEl = document.documentElement;
+    const supported = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+    if (!supported) { btn.classList.add('unsupported'); return; }
+    btn.addEventListener('click', () => {
+      const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+      if (fsEl) {
+        (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      } else {
+        (docEl.requestFullscreen || docEl.webkitRequestFullscreen).call(docEl);
+      }
+    });
+  })();
 
   // Show the deploy SHA in the lobby footer. In dev (or if the workflow
   // substitution didn't run) the placeholder lingers — replace it with
