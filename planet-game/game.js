@@ -43,6 +43,11 @@
   const SCAR_DAMAGE_MIN = 3;            // damage applied when an event auto-resolves
   const SCAR_DAMAGE_MAX = 10;
 
+  // Phase 4: tap-to-handle tuning
+  const EVENT_TAP_SNAP_RADIUS = 0.18;   // normalized planet radii — generous tap target
+  const FEATURE_QUALITY_BASE = 8;       // max base quality at maturity 1.0, normal tier
+  const STABILITY_AFTER_ADVANCE = 55;   // post-advance stability invariant (Law VI)
+
   // Law V tuning — density is now 2D, measured at the actual release point
   const DENSITY_SIGMA = 0.3;         // fraction of planet radius — how wide each fault's influence spreads
   const DENSITY_SCARRING_CAP = 1.5;  // saturation point for "how scarred" this area is
@@ -84,7 +89,6 @@
   const state = {
     ageTicks: 0,
     influence: 0,
-    stability: 50,
     events: [],          // {kind, x, y, spawnedAt, lifetime, status: 'active'}
     features: [],        // {kind, x, y, quality, bornInEpoch}
     scars: [],           // {x, y, damage, bornInEpoch, sourceEvent: null}
@@ -104,7 +108,6 @@
         planetSeed: state.planetSeed,
         ageTicks: state.ageTicks,
         influence: state.influence,
-        stability: state.stability,
         epoch: state.epoch,
         events: state.events,
         features: state.features,
@@ -135,7 +138,6 @@
     state.planetSeed  = (saved.planetSeed >>> 0) || state.planetSeed;
     state.ageTicks    = Math.max(0, saved.ageTicks | 0);
     state.influence   = Math.max(0, Number(saved.influence) || 0);
-    state.stability   = Math.max(0, Math.min(100, Number(saved.stability) || 50));
     state.epoch       = clamp(saved.epoch | 0, 1, MAX_EPOCH);
     state.events      = Array.isArray(saved.events) ? saved.events : [];
     state.features    = Array.isArray(saved.features) ? saved.features : [];
@@ -293,6 +295,62 @@
     event.status = 'resolved_auto';
   }
 
+  // Find the closest active event within EVENT_TAP_SNAP_RADIUS of a tap.
+  // Returns the event or null if no active event is close enough. This is
+  // the snap-to-event tap routing (Phase 4) — taps near events resolve
+  // them; taps in empty space are ignored.
+  function findEventNearPoint(px, py) {
+    let best = null, bestD2 = EVENT_TAP_SNAP_RADIUS * EVENT_TAP_SNAP_RADIUS;
+    for (const event of state.events) {
+      if (event.status !== 'active') continue;
+      const dx = event.x - px, dy = event.y - py;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) { best = event; bestD2 = d2; }
+    }
+    return best;
+  }
+
+  // Resolve an active event into a TerrainFeature using a charge tier.
+  // Quality scales with maturity (handling later = bigger features) and
+  // tier multiplier. PR 1 maps every event to a VolcanicRidge. The event
+  // is flagged 'resolved_handled' so the tick-loop sweep removes it.
+  function handleEvent(event, tier) {
+    if (event.status !== 'active') return false;
+    if (state.influence < tier.will) return false;
+    state.influence -= tier.will;
+    const maturity = eventMaturity(event);
+    const quality = maturity * tier.mult * FEATURE_QUALITY_BASE;
+    state.features.push({
+      kind: 'VolcanicRidge',
+      x: event.x,
+      y: event.y,
+      quality,
+      bornInEpoch: state.epoch,
+    });
+    event.status = 'resolved_handled';
+    pushLog({
+      ageTicks: state.ageTicks,
+      handled: true,
+      quality,
+      tier: tier.label,
+    });
+    flashStage();
+    maybeAdvanceEpoch();
+    return true;
+  }
+
+  // Derived stability — computed from epochAnchor + sum(feature.quality)
+  // - sum(scar.damage), clamped to [0, 100]. Replaces the old stored
+  // state.stability field. epochAnchor absorbs the gap so post-advance
+  // stability snaps to STABILITY_AFTER_ADVANCE without erasing geology.
+  function computeStability() {
+    let qualitySum = 0;
+    for (const f of state.features) qualitySum += f.quality;
+    let damageSum = 0;
+    for (const s of state.scars) damageSum += s.damage;
+    return clamp(state.epochAnchor + qualitySum - damageSum, 0, 100);
+  }
+
   // Deterministic integer-lattice hash → [0, 1). Seeded so the same planet
   // recurs across epochs / reloads-within-a-session, honoring Law II.
   // Math.imul keeps every step in signed-32-bit space — plain `*` would
@@ -424,20 +482,33 @@
 
     // Sweep resolved events out of the active list
     state.events = state.events.filter(e => e.status === 'active');
+
+    // Auto-advance check — an auto-resolved event normally lowers stability,
+    // but a tap-handled feature can push it past STABILITY_GOAL. Also
+    // covers any future case where derived stability crosses the threshold
+    // mid-tick without a player tap.
+    maybeAdvanceEpoch();
   }
 
-  // Epoch advance — kept here so Phase 4 can wire it back in once stability
-  // becomes derived from features/scars. Currently unreferenced.
+  // Epoch advance — derived-stability model. Adjusts state.epochAnchor so
+  // immediately after advance, computeStability() returns
+  // STABILITY_AFTER_ADVANCE even though features and scars persist. This
+  // is what makes "stability resets to 55 on epoch advance" hold under
+  // the derived-stability model (geology stays; the floor moves).
   function maybeAdvanceEpoch() {
-    if (state.stability >= STABILITY_GOAL && state.epoch < MAX_EPOCH) {
-      state.epoch += 1;
-      state.stability = 55;
-      bakeTerrain(); // Law VI: epoch tint shifts, same continents
-      pushLog({
-        ageTicks: state.ageTicks,
-        epochEnter: state.epoch,
-      });
-    }
+    if (computeStability() < STABILITY_GOAL) return;
+    if (state.epoch >= MAX_EPOCH) return;
+    state.epoch += 1;
+    let qualitySum = 0;
+    for (const f of state.features) qualitySum += f.quality;
+    let damageSum = 0;
+    for (const s of state.scars) damageSum += s.damage;
+    state.epochAnchor = STABILITY_AFTER_ADVANCE - qualitySum + damageSum;
+    bakeTerrain(); // Law VI: epoch tint shifts, same continents
+    pushLog({
+      ageTicks: state.ageTicks,
+      epochEnter: state.epoch,
+    });
   }
 
   function flashStage() {
@@ -616,6 +687,49 @@
     ctx.restore();
   }
 
+  // Draw permanent geology — TerrainFeatures from handled events. Bright
+  // tan ridges with a warm halo and a soft dark base shadow for depth.
+  // Length scales with feature.quality, oriented radially like events
+  // and scars. Static (no animation) — features are persistent geology.
+  function drawFeatures() {
+    const { cx, cy, r } = view;
+    ctx.save();
+    ctx.lineCap = 'round';
+    for (const f of state.features) {
+      const px = cx + f.x * r;
+      const py = cy + f.y * r;
+      const length = Math.min(60, 12 + f.quality * 1.5);
+      const ang = Math.atan2(f.y, f.x);
+      const dx = Math.cos(ang) * length * 0.5;
+      const dy = Math.sin(ang) * length * 0.5;
+
+      // Subtle dark base shadow for depth
+      ctx.strokeStyle = 'rgba(20, 14, 10, 0.55)';
+      ctx.lineWidth = 4.5;
+      ctx.beginPath();
+      ctx.moveTo(px - dx + 0.5, py - dy + 1);
+      ctx.lineTo(px + dx + 0.5, py + dy + 1);
+      ctx.stroke();
+
+      // Warm halo
+      ctx.strokeStyle = 'rgba(220, 170, 110, 0.35)';
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.moveTo(px - dx, py - dy);
+      ctx.lineTo(px + dx, py + dy);
+      ctx.stroke();
+
+      // Bright ridge line
+      ctx.strokeStyle = 'rgba(220, 200, 165, 0.85)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(px - dx, py - dy);
+      ctx.lineTo(px + dx, py + dy);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawPlanet() {
     const { w, h, cx, cy, r } = view;
     ctx.clearRect(0, 0, w, h);
@@ -639,10 +753,12 @@
       ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
     }
 
-    // Geology layer — scars first (permanent damage), then events on top
-    // (live ripening faults). Both render inside the planet clip so visuals
-    // near the rim don't bleed into space.
+    // Geology layer — scars first (permanent damage), then features
+    // (handled events as ridges), then live events on top (ripening
+    // faults). All render inside the planet clip so visuals near the rim
+    // don't bleed into space.
     drawScars();
+    drawFeatures();
     drawEvents();
     ctx.restore();
 
@@ -767,8 +883,9 @@
   }
 
   function renderHUD() {
-    els.stabilityVal.textContent = Math.round(state.stability);
-    els.stabilityFill.style.width = `${state.stability}%`;
+    const stability = computeStability();
+    els.stabilityVal.textContent = Math.round(stability);
+    els.stabilityFill.style.width = `${stability}%`;
 
     els.influenceVal.textContent = Math.floor(state.influence);
     els.influenceFill.style.width = `${clamp(state.influence, 0, 100)}%`;
@@ -822,8 +939,10 @@
   }
 
   function resolveTap(px, py, tier) {
-    // Phase 1 stub — tap routing is no-op until Phase 2 wires up event hit-testing.
-    return null;
+    if (!tier) return null;            // shouldn't happen — tierFromHold guards
+    const event = findEventNearPoint(px, py);
+    if (!event) return null;            // tap missed any event
+    return handleEvent(event, tier);
   }
 
   function onPointerDown(e) {
