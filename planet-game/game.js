@@ -328,7 +328,9 @@
   function pickEventKind() {
     let totalDamage = 0;
     for (const s of state.scars) totalDamage += s.damage;
-    const avgDensity = totalDamage / 30;
+    // Clamped to [0, 1] so the comparison with PLUME_SPAWN_THRESHOLD has
+    // a stable interpretation even on heavily-scarred planets.
+    const avgDensity = Math.min(1, totalDamage / 30);
     if (avgDensity > PLUME_SPAWN_THRESHOLD && Math.random() < 0.5) {
       return 'BuildingPlume';
     }
@@ -580,6 +582,15 @@
       const p = randomDiskPoint();
       x = p.x;
       y = p.y;
+    }
+    // Project back onto the unit disk if the perturbation pushed off-planet.
+    // Off-disk scars would still affect stability and spawn bias but get
+    // clipped by drawPlanet's arc-clip — invisible damage is bad UX.
+    const r2 = x * x + y * y;
+    if (r2 > 1) {
+      const inv = 0.99 / Math.sqrt(r2);  // 0.99 leaves a hair of margin off the rim
+      x *= inv;
+      y *= inv;
     }
     const damage = pickRandomInRange(BACKGROUND_SCAR_DAMAGE_MIN, BACKGROUND_SCAR_DAMAGE_MAX);
     state.scars.push({
@@ -837,6 +848,9 @@
       }
       if (e.sacrifice) {
         return `<li><span class="age">${formatAge(e.ageTicks)}</span>Sacrificed feature → bought ${e.nudgeSeconds.toFixed(0)}s of breathing room</li>`;
+      }
+      if (e.backgroundScar) {
+        return `<li><span class="age">${formatAge(e.ageTicks)}</span>Background pressure → <span class="bad">+${e.damage.toFixed(1)} damage</span></li>`;
       }
       return '';
     }).filter(Boolean).join('');
@@ -1174,12 +1188,20 @@
     const { cx, cy, r } = view;
     ctx.save();
     ctx.lineCap = 'round';
+    // Visual bounds span ALL scar sources: background pressure (1.5-4),
+    // fault auto-resolve (3-10), and plume auto-erupt (6-14). Using the
+    // tightest source range for visuals would mis-size the others (ambient
+    // scars look too heavy; plume ruptures look capped).
+    const SCAR_VISUAL_MIN = 1.5;
+    const SCAR_VISUAL_MAX = 14;
     for (const s of state.scars) {
       const px = cx + s.x * r;
       const py = cy + s.y * r;
-      const damage = clamp(s.damage || SCAR_DAMAGE_MIN, SCAR_DAMAGE_MIN, SCAR_DAMAGE_MAX);
-      const length = 8 + (damage / 10) * 6;     // ~10px (light) → 14px (heavy)
-      const width = 1 + (damage / 10) * 1;      // 1px → 2px
+      const damage = clamp(s.damage || SCAR_VISUAL_MIN, SCAR_VISUAL_MIN, SCAR_VISUAL_MAX);
+      // Linear remap to [0, 1] for the size scaling.
+      const t = (damage - SCAR_VISUAL_MIN) / (SCAR_VISUAL_MAX - SCAR_VISUAL_MIN);
+      const length = 6 + t * 12;                 // 6px (ambient) → 18px (plume rupture)
+      const width = 0.8 + t * 2.0;               // 0.8px → 2.8px
       // Perpendicular to the radius: rotate the radial angle by 90°. Add
       // a small deterministic jitter so scars don't look cloned.
       const radialAng = Math.atan2(s.y, s.x);
@@ -1533,9 +1555,9 @@
     const hasActiveEvent = activeEvents.length > 0;
 
     els.hint.classList.toggle('ready', ready && !ripeEvent);
-    // .urgent is intentionally suppressed in sacrifice mode — the
-    // sacrifice copy has its own mood.
-    els.hint.classList.toggle('urgent', !!ripeEvent);
+    // .urgent is suppressed in sacrifice mode — the sacrifice copy has
+    // its own mood (heavy choice, not panic).
+    els.hint.classList.toggle('urgent', !!ripeEvent && !inSacrificeMode);
 
     if (inSacrificeMode && hasSacrificable && hasActiveEvent) {
       els.hint.textContent = 'will depleted — tap an old feature to sacrifice it and nudge an event back';
