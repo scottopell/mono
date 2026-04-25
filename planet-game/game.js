@@ -633,22 +633,31 @@
     // center, so atan2(y, x) is exactly the orientation we want.
     const ang = Math.atan2(event.y, event.x);
 
+    // Subtle "breath" so events read as alive even at low maturity. Tiny
+    // per-event phase offset (deterministic from position) so the planet's
+    // events don't all pulse in lockstep — feels organic, not mechanical.
+    // Applied to the early stages (hairline/fissure/glowingCrack) on the
+    // colored fill stroke; pulsing/aboutToRupture already have stronger
+    // motion of their own and are left alone so we don't compound it.
+    const breathPhase = event.x * 7 + event.y * 5;
+    const breath = 0.85 + 0.15 * Math.sin(performance.now() / 480 + breathPhase);
+
     // Tunable per stage. shadowWidth > strokeWidth gives a "drop shadow"
     // outline; halo (when set) sits below shadow for the warmer stages.
     let length, strokeWidth, shadowWidth, fillColor, halo = null;
     switch (stage) {
       case 'hairline':
         length = 22; strokeWidth = 1.0; shadowWidth = 2.4;
-        fillColor = 'rgba(240, 230, 215, 0.75)';
+        fillColor = `rgba(240, 230, 215, ${0.75 * breath})`;
         break;
       case 'fissure':
         length = 32; strokeWidth = 1.6; shadowWidth = 3.4;
-        fillColor = 'rgba(245, 215, 180, 0.85)';
+        fillColor = `rgba(245, 215, 180, ${0.85 * breath})`;
         break;
       case 'glowingCrack':
         length = 40; strokeWidth = 2.4; shadowWidth = 4.6;
-        fillColor = 'rgba(245, 165, 110, 0.95)';
-        halo = { color: 'rgba(220, 110, 60, 0.45)', width: 9 };
+        fillColor = `rgba(245, 165, 110, ${0.95 * breath})`;
+        halo = { color: `rgba(220, 110, 60, ${0.45 * breath})`, width: 9 };
         break;
       case 'pulsing': {
         // ~220ms half-period; lerp between bright peak and dim trough.
@@ -701,13 +710,21 @@
   }
 
   // Draw permanent geology — scars left behind by auto-resolved events.
-  // Short dark radial slashes; length scales modestly with damage so a
-  // damage=10 scar reads heavier than a damage=3 one without becoming
-  // cartoonishly large. No animation (scars are static, not events).
+  // Visually distinct from active events:
+  //   - Run TANGENT to the planet (perpendicular to the radius), where
+  //     events run radially. Instant orientation cue: events point out,
+  //     scars run sideways.
+  //   - Lower contrast (alpha ~0.65) so they sit in the crust rather
+  //     than popping off it.
+  //   - A 1px lighter line above the dark stroke gives a sunken "canyon"
+  //     read — settled-in geology, not a clickable target.
+  //   - Tiny deterministic angle jitter (+/- 0.15 rad) per scar so the
+  //     field doesn't look cookie-cutter. Hash is from position, not
+  //     time, so a given scar's angle stays put across frames.
+  // No animation (scars are static, not events).
   function drawScars() {
     const { cx, cy, r } = view;
     ctx.save();
-    ctx.strokeStyle = 'rgba(20, 12, 8, 0.85)';
     ctx.lineCap = 'round';
     for (const s of state.scars) {
       const px = cx + s.x * r;
@@ -715,13 +732,28 @@
       const damage = clamp(s.damage || SCAR_DAMAGE_MIN, SCAR_DAMAGE_MIN, SCAR_DAMAGE_MAX);
       const length = 8 + (damage / 10) * 6;     // ~10px (light) → 14px (heavy)
       const width = 1 + (damage / 10) * 1;      // 1px → 2px
-      const ang = Math.atan2(s.y, s.x);
+      // Perpendicular to the radius: rotate the radial angle by 90°. Add
+      // a small deterministic jitter so scars don't look cloned.
+      const radialAng = Math.atan2(s.y, s.x);
+      const jitter = Math.sin(s.x * 91 + s.y * 53) * 0.15;
+      const ang = radialAng + Math.PI / 2 + jitter;
       const dx = Math.cos(ang) * length * 0.5;
       const dy = Math.sin(ang) * length * 0.5;
+      // Dark sunken stroke — softened from 0.85 → 0.65 so scars settle
+      // into the crust instead of competing with active events.
+      ctx.strokeStyle = 'rgba(28, 20, 14, 0.65)';
       ctx.lineWidth = width;
       ctx.beginPath();
       ctx.moveTo(px - dx, py - dy);
       ctx.lineTo(px + dx, py + dy);
+      ctx.stroke();
+      // Thin lit highlight 1px above — reads as a sunken crack with a
+      // sunlit upper rim, the canyon-style depth treatment.
+      ctx.strokeStyle = 'rgba(230, 215, 195, 0.22)';
+      ctx.lineWidth = Math.max(0.8, width - 0.4);
+      ctx.beginPath();
+      ctx.moveTo(px - dx, py - dy - 1);
+      ctx.lineTo(px + dx, py + dy - 1);
       ctx.stroke();
     }
     ctx.restore();
