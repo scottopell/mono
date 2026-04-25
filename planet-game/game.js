@@ -1002,7 +1002,115 @@
       if (event.status !== 'active') continue;
       if (event.kind === 'StressedFault') drawStressedFault(event);
       else if (event.kind === 'BuildingPlume') drawBuildingPlume(event);
+      else if (event.kind === 'Orogeny') drawOrogeny(event);
     }
+  }
+
+  // Draw a single Orogeny. An Orogeny event represents two land masses
+  // converging — over its 8-20 minute lifetime it grows a continuous
+  // ridge along the convergent axis between (x1, y1) and (x2, y2).
+  //
+  // The visual is intentionally subtle and continuous (no discrete
+  // stage flips like StressedFault / BuildingPlume have): the bulge
+  // smoothly widens, color saturates, and late-stage features (cracks,
+  // hot inner glow) fade in via alpha. This matches the design pivot's
+  // "geological time" feel — you can almost see it growing if you stare,
+  // like watching a glacier or a mountain.
+  //
+  // Layers, outer to inner:
+  //   - halo:       wide low-alpha warm wash, "gravitational disturbance"
+  //   - body:       solid filled capsule along the axis (the ridge)
+  //   - crest:      thinner lighter line offset perpendicular (lit upper edge)
+  //   - cracks:     fade in for m > 0.6, short perpendicular strokes
+  //   - hot glow:   fades in for m > 0.9, hint of imminent eruption
+  function drawOrogeny(event) {
+    if (event.x1 == null) return;  // defensive: an Orogeny without an axis can't render
+    const { cx, cy, r } = view;
+    const m = eventMaturity(event);  // 0..1
+
+    // Axis endpoints in pixel space.
+    const ax = cx + event.x1 * r, ay = cy + event.y1 * r;
+    const bx = cx + event.x2 * r, by = cy + event.y2 * r;
+    const dx = bx - ax, dy = by - ay;
+    const axisLen = Math.hypot(dx, dy);
+    if (axisLen < 1) return;
+    const ux = dx / axisLen, uy = dy / axisLen;        // unit along the axis
+    const ppx = -uy, ppy = ux;                         // unit perpendicular
+
+    // Subtle breath — slower than fault/plume because orogeny is
+    // geological time, not heartbeat time.
+    const breathPhase = event.x * 3 + event.y * 5;
+    const breath = 0.92 + 0.08 * Math.sin(performance.now() / 1100 + breathPhase);
+
+    // Width grows smoothly from "barely visible" at m=0 to a noticeable
+    // mountain-range bulge at m=1.
+    const widthPx = (8 + m * 20) * breath;             // 8 -> 28 px perpendicular extent
+
+    ctx.save();
+
+    // Outer halo — wider, low-alpha warm tone. Reads as "gravitational
+    // disturbance" around the bulge.
+    ctx.strokeStyle = `rgba(180, 130, 80, ${0.15 + m * 0.20})`;
+    ctx.lineWidth = widthPx * 2.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+    ctx.stroke();
+
+    // Bulge body — solid filled capsule using a thick rounded line.
+    // Color intensifies with maturity (warmer browns -> warmer reds).
+    const bodyR = Math.round(110 + m * 80);    // 110 -> 190
+    const bodyG = Math.round(75 + m * 25);     // 75 -> 100
+    const bodyB = Math.round(45 + m * 10);     // 45 -> 55
+    ctx.strokeStyle = `rgba(${bodyR}, ${bodyG}, ${bodyB}, ${0.55 + m * 0.30})`;
+    ctx.lineWidth = widthPx;
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+    ctx.stroke();
+
+    // Lit crest — a thinner, lighter line slightly offset perpendicular,
+    // the "lit upper edge" of the rising terrain. Feels like 3D.
+    const crestOffset = -widthPx * 0.20;
+    ctx.strokeStyle = `rgba(245, 215, 175, ${0.35 + m * 0.45})`;
+    ctx.lineWidth = widthPx * 0.35;
+    ctx.beginPath();
+    ctx.moveTo(ax + ppx * crestOffset, ay + ppy * crestOffset);
+    ctx.lineTo(bx + ppx * crestOffset, by + ppy * crestOffset);
+    ctx.stroke();
+
+    // Late-stage cracks — fade in continuously after m > 0.6 (no abrupt
+    // stage flip). 3 short perpendicular strokes across the bulge.
+    if (m > 0.6) {
+      const crackAlpha = (m - 0.6) / 0.4;        // 0 at m=0.6, 1 at m=1.0
+      ctx.strokeStyle = `rgba(20, 8, 4, ${0.7 * crackAlpha})`;
+      ctx.lineWidth = 1.5;
+      const crackHalfW = widthPx * 0.6;
+      for (let i = 1; i <= 3; i++) {
+        const t = i / 4;       // distribute at 1/4, 2/4, 3/4 along the axis
+        const ccx = ax + (bx - ax) * t;
+        const ccy = ay + (by - ay) * t;
+        ctx.beginPath();
+        ctx.moveTo(ccx + ppx * crackHalfW, ccy + ppy * crackHalfW);
+        ctx.lineTo(ccx - ppx * crackHalfW, ccy - ppy * crackHalfW);
+        ctx.stroke();
+      }
+    }
+
+    // At maturity > 0.9, hot inner glow leaks through (we're about to
+    // erupt as a giant orogenic event). Smooth fade-in.
+    if (m > 0.9) {
+      const hotAlpha = (m - 0.9) / 0.1;
+      ctx.strokeStyle = `rgba(255, 90, 50, ${0.5 * hotAlpha * breath})`;
+      ctx.lineWidth = widthPx * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+    }
+
+    ctx.restore();
   }
 
   // Draw a single StressedFault. Position is the event's normalized planet
