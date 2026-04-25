@@ -60,11 +60,20 @@
 
   // -------- Host --------
 
-  function createHost({ onPeerJoined, onMessage, onStatus, onError }) {
+  // forceCode: if provided, the host MUST claim that exact peer ID (used by
+  //   the rejoin flow so a refreshed host keeps the same room code). On
+  //   'unavailable-id' (e.g., the previous Peer hasn't yet been freed by
+  //   the signaling server), retry the same code with backoff. Without
+  //   forceCode, host generates a fresh code and rolls a new one on
+  //   collision.
+  function createHost({ onPeerJoined, onMessage, onStatus, onError, forceCode }) {
     let peer = null;
     let conn = null;
     let closed = false;
     let idRetries = 0;
+    let forceCodeRetries = 0;
+    const FORCE_CODE_MAX_RETRIES = 5;       // ~10–30s with exponential backoff
+    const FORCE_CODE_BASE_MS = 1500;
 
     const api = {
       code: null,
@@ -77,7 +86,7 @@
     };
 
     function openPeerWithNewCode() {
-      api.code = randomCode();
+      api.code = forceCode || randomCode();
       peer = new Peer(PEER_PREFIX + api.code, peerOptions());
 
       peer.on('open', () => {
@@ -114,11 +123,23 @@
 
       peer.on('error', (err) => {
         if (closed) return;
-        if (err && err.type === 'unavailable-id' && idRetries < MAX_HOST_ID_RETRIES) {
-          idRetries += 1;
-          try { peer.destroy(); } catch (_) {}
-          openPeerWithNewCode();
-          return;
+        if (err && err.type === 'unavailable-id') {
+          if (forceCode && forceCodeRetries < FORCE_CODE_MAX_RETRIES) {
+            // Host is rejoining and the signaling server hasn't released
+            // the previous Peer's id yet. Wait and retry the same code.
+            forceCodeRetries += 1;
+            const backoff = FORCE_CODE_BASE_MS * Math.pow(1.5, forceCodeRetries - 1);
+            try { peer.destroy(); } catch (_) {}
+            onStatus && onStatus('reconnecting');
+            setTimeout(() => { if (!closed) openPeerWithNewCode(); }, backoff);
+            return;
+          }
+          if (!forceCode && idRetries < MAX_HOST_ID_RETRIES) {
+            idRetries += 1;
+            try { peer.destroy(); } catch (_) {}
+            openPeerWithNewCode();
+            return;
+          }
         }
         console.error('[backgammon] host peer error:', err);
         onError && onError(err);
