@@ -119,12 +119,11 @@
     const hint = $('tap-hint');
     return {
       stability:  numOf('stability-val'),
-      pressure:   numOf('pressure-val'),
-      volcanic:   numOf('volcanic-val'),
       influence:  numOf('influence-val'),
+      events:     numOf('event-count'),
+      scars:      numOf('scar-count'),
       age:        $('age')?.textContent ?? null,
       epoch:      $('epoch')?.textContent ?? null,
-      faultCount: numOf('fault-count'),
       paused:     (pauseBtn().textContent || '').trim().toLowerCase() === 'resume',
       ready:      !!hint && hint.classList.contains('ready'),
       hint:       hint?.textContent ?? null,
@@ -138,8 +137,8 @@
       text: (li.textContent || '').replace(/\s+/g, ' ').trim(),
       positive: !!li.querySelector('.good'),
       negative: !!li.querySelector('.bad'),
-      eruption: !!li.querySelector('.eruption-tag'),
-      volcanic: !!li.querySelector('.volcanic-tag'),
+      focused: !!li.querySelector('.tier-focused'),
+      deep: !!li.querySelector('.tier-deep'),
     }));
   }
 

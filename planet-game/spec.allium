@@ -1,0 +1,581 @@
+-- allium: 3
+-- Planet Game — events-not-ticks design specification
+--
+-- The player IS a planet, guiding their own crust through ten epochs
+-- (Hadean → Stillness). Discrete map phenomena (events) ripen visibly
+-- and demand triage. Handled events become permanent terrain (the
+-- player's autobiography); ignored events become permanent scars.
+-- Stability is derived from the map, not summed from deltas.
+
+------------------------------------------------------------
+-- Given
+------------------------------------------------------------
+
+-- The session operates on a single planet instance.
+given {
+    planet: Planet
+}
+
+------------------------------------------------------------
+-- Value Types
+------------------------------------------------------------
+
+-- Position on the planet disk in normalised coordinates.
+-- (0, 0) is the centre; the rim is the unit circle (x² + y² <= 1).
+value Position {
+    x: Decimal
+    y: Decimal
+    is_inside_disc: x * x + y * y <= 1.0
+}
+
+-- Charge tier represents how deeply the player invested in handling
+-- an event. The player picks the tier through hold duration; each
+-- tier costs more Will and amplifies the resulting feature's quality.
+value ChargeTier {
+    label: normal | focused | deep
+    will_cost: Integer
+    multiplier: Decimal
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+-- Epoch number maps to a name and a climate flag.
+-- Glacial events spawn only in cold epochs.
+enum EpochName {
+    hadean | archean | proterozoic | cambrian | carboniferous
+    | mesozoic | cenozoic | anthropocene | twilight | stillness
+}
+
+------------------------------------------------------------
+-- Entities and Variants
+------------------------------------------------------------
+
+-- The planet — the entity the player controls.
+entity Planet {
+    seed: Integer
+    epoch_number: Integer                  -- 1..10
+    epoch_name: EpochName
+    is_cold_epoch: Boolean
+
+    -- Will is the action currency. Accumulates over time; spent on event handling.
+    will: Decimal
+    last_will_tick: Timestamp
+
+    -- Spawn cadence — temporal trigger checks against last_spawn.
+    last_spawn: Timestamp
+
+    -- Background scarring fires when the event queue is full for too long.
+    last_background_scar: Timestamp
+
+    -- Anchored stability per epoch. Resets on epoch advance so each epoch
+    -- has its own goal, even though terrain quality persists.
+    epoch_anchor: Integer
+
+    -- Relationships
+    features: TerrainFeature with planet = this
+    scars: Scar with planet = this
+    events: Event with planet = this
+
+    -- Projections
+    active_events: events where status = active
+    settled_features: features where age_in_epochs >= config.sacrifice_age_threshold
+    sacrificable_features: settled_features
+
+    -- Derived
+    terrain_quality: features.sum(f => f.quality)
+    scar_damage: scars.sum(s => s.damage)
+    -- Stability is a continuous readout of the map's current quality,
+    -- bounded by the per-epoch anchor. Non-fungible: handled events
+    -- raise terrain_quality; ignored events raise scar_damage.
+    stability: clamp(epoch_anchor + terrain_quality - scar_damage, 0, 100)
+    queue_is_full: active_events.count >= config.max_active_events
+}
+
+-- TerrainFeature — geography the player created (handled events).
+-- Permanent (until volcanic resurfacing or terrain sacrifice).
+entity TerrainFeature {
+    planet: Planet
+    kind: VolcanicRidge | OrogenicRange | BasaltPatch | RiftValley
+    position: Position
+
+    -- Quality contributes to stability. Non-decaying for v1; see open
+    -- question StabilityCompoundingTrap.
+    quality: Decimal
+    born_in_epoch: Integer
+
+    -- Derived
+    age_in_epochs: planet.epoch_number - born_in_epoch
+    is_sacrificable: age_in_epochs >= config.sacrifice_age_threshold
+}
+
+variant VolcanicRidge : TerrainFeature {
+    -- Volcanic chains spawn future hotspots along their length.
+    chain_seed: Integer?
+}
+
+variant OrogenicRange : TerrainFeature {
+    height: Decimal
+}
+
+variant BasaltPatch : TerrainFeature {
+    diameter: Decimal
+}
+
+variant RiftValley : TerrainFeature {
+    length: Decimal
+}
+
+-- Scar — damage left behind by ignored events.
+-- Counts against stability and biases nearby event spawning.
+entity Scar {
+    planet: Planet
+    position: Position
+    damage: Decimal
+    born_in_epoch: Integer
+    -- The event that produced this scar. Null for ambient/background scars
+    -- accumulated while the queue was full.
+    source_event: Event?
+}
+
+-- Event — a discrete map phenomenon with visible position and ripeness.
+-- Maturity grows from 0 to 1 over the event's lifetime. The player
+-- may handle it (producing a TerrainFeature) before it auto-resolves
+-- to a Scar at maturity 1.0.
+entity Event {
+    planet: Planet
+    kind: StressedFault | BuildingPlume | Orogeny | Supervolcano | Rifting | GlacialAdvance
+    position: Position
+    spawned_at: Timestamp
+    lifetime: Duration
+    status: active | resolved_handled | resolved_auto
+
+    -- Maturity is derived from elapsed time. Sacrificing terrain
+    -- shifts spawned_at forward, "younger-ifying" the event.
+    maturity: clamp((now - spawned_at) / lifetime, 0.0, 1.0)
+
+    -- Minor events resolve quickly (45-120s); major events span sessions
+    -- (8-20 minutes) and resolve into permanent terrain changes.
+    is_minor: kind in {StressedFault, BuildingPlume}
+    is_major: not is_minor
+
+    transitions status {
+        active -> resolved_handled
+        active -> resolved_auto
+        terminal: resolved_handled, resolved_auto
+    }
+}
+
+variant StressedFault : Event {
+    fault_kind: extensional | compressional
+}
+
+variant BuildingPlume : Event {
+    -- Plumes only spawn where local fault density exceeds the hotspot
+    -- threshold. seed_density records the density at spawn time.
+    seed_density: Decimal
+}
+
+variant Orogeny : Event {
+    -- Two converging land masses. Resolves into an OrogenicRange.
+    convergence_axis: Position
+}
+
+variant Supervolcano : Event {
+    -- A hotspot left alone too long. Resolves into a major BasaltPatch
+    -- or, if ignored, a continent-scale scar.
+    seed_chain: Integer?
+}
+
+variant Rifting : Event {
+    -- A continent splitting. Resolves into a RiftValley (eventually
+    -- fills with ocean — implementation may rebake terrain).
+    rift_axis: Position
+}
+
+variant GlacialAdvance : Event {
+    -- Only spawns in cold epochs. Resolves into carved valleys (handled)
+    -- or glacial scars (ignored).
+    advance_direction: Position
+}
+
+------------------------------------------------------------
+-- Config
+------------------------------------------------------------
+
+config {
+    -- World shape
+    epoch_count: Integer = 10
+    max_active_events: Integer = 5
+
+    -- Stability bounds
+    stability_initial: Integer = 50
+    stability_goal: Integer = 100
+    stability_after_advance: Integer = 55
+
+    -- Will economy
+    will_per_second: Decimal = 0.9
+    will_normal_cost: Integer = 10
+    will_focused_cost: Integer = 50
+    will_deep_cost: Integer = 100
+
+    -- Event lifetimes
+    minor_event_lifetime_min: Duration = 45.seconds
+    minor_event_lifetime_max: Duration = 120.seconds
+    major_event_lifetime_min: Duration = 8.minutes
+    major_event_lifetime_max: Duration = 20.minutes
+
+    -- Spawning
+    spawn_interval_min: Duration = 30.seconds
+    spawn_interval_max: Duration = 60.seconds
+    background_scar_interval: Duration = 50.seconds
+    background_scar_damage: Decimal = 1.5
+
+    -- Sacrifice
+    sacrifice_age_threshold: Integer = 1   -- epochs old before sacrificable
+
+    -- Resurfacing radius (volcanic events that resurface nearby scars)
+    resurface_radius: Decimal = 0.28
+    resurface_strength: Decimal = 0.65
+
+    -- Quality / damage tuning targets
+    quality_min: Decimal = 5.0
+    quality_max: Decimal = 15.0
+    damage_min: Decimal = 3.0
+    damage_max: Decimal = 10.0
+}
+
+------------------------------------------------------------
+-- Defaults
+------------------------------------------------------------
+
+default ChargeTier tier_normal  = { label: normal,  will_cost: 10,  multiplier: 1.0 }
+default ChargeTier tier_focused = { label: focused, will_cost: 50,  multiplier: 2.0 }
+default ChargeTier tier_deep    = { label: deep,    will_cost: 100, multiplier: 3.0 }
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+-- Will accumulates continuously. Modelled as a per-second tick;
+-- implementation may use a derived expression instead.
+rule WillAccumulates {
+    when: _: Planet.last_will_tick + 1.second <= now
+    ensures:
+        planet.will = planet.will + config.will_per_second
+        planet.last_will_tick = now
+}
+
+-- Spawn a new event when the queue has room. Type and position are
+-- biased by the current epoch and existing map state (see guidance).
+rule SpawnEvent {
+    when: _: Planet.last_spawn + config.spawn_interval_min <= now
+    requires: not planet.queue_is_full
+    ensures:
+        Event.created(
+            planet: planet,
+            kind: ChosenKindForEpoch(planet),
+            position: ChosenPositionForKind(planet),
+            spawned_at: now,
+            lifetime: LifetimeForKind(planet),
+            status: active
+        )
+        planet.last_spawn = now
+    @guidance
+        Event-kind weights vary by epoch:
+          - Hadean / Archean: heavy on StressedFault, BuildingPlume; rare Supervolcano
+          - Proterozoic+: introduce Orogeny when continents are large enough
+          - Cold epochs (defined per epoch): GlacialAdvance enters the pool
+          - Late epochs: Rifting becomes possible
+        Spawn position is biased toward existing geology so the map
+        telegraphs future events: convergent zones reveal future
+        Orogeny; heavily-scarred zones reveal future BuildingPlume.
+}
+
+-- An untended event reaches full maturity and becomes a scar.
+rule EventAutoResolves {
+    when: event: Event.maturity >= 1.0
+    requires: event.status = active
+    ensures:
+        Scar.created(
+            planet: event.planet,
+            position: event.position,
+            damage: AutoResolveDamage(event),
+            born_in_epoch: event.planet.epoch_number,
+            source_event: event
+        )
+        event.status = resolved_auto
+    @guidance
+        Damage scales with event size: minor events → 3-5 damage;
+        major events → 8-15 damage. Late-resolving major events (e.g.,
+        a Supervolcano left for hours) may cluster multiple scars.
+}
+
+-- The player handles an event by tapping it with a charge tier.
+-- Resulting feature kind depends on the event variant.
+rule HandleEventResolves {
+    when: HandleEventTap(event: Event, tier: ChargeTier)
+    requires: event.status = active
+    requires: event.planet.will >= tier.will_cost
+    let quality = HandledQuality(event, tier)
+    ensures:
+        if event.kind = StressedFault:
+            TerrainFeature.created(
+                planet: event.planet,
+                kind: VolcanicRidge,
+                position: event.position,
+                quality: quality,
+                born_in_epoch: event.planet.epoch_number
+            )
+        if event.kind = BuildingPlume:
+            TerrainFeature.created(
+                planet: event.planet,
+                kind: BasaltPatch,
+                position: event.position,
+                quality: quality * 1.2,
+                born_in_epoch: event.planet.epoch_number
+            )
+            -- Volcanic vents resurface nearby scars within radius.
+            for s in event.planet.scars:
+                if Distance(s.position, event.position) <= config.resurface_radius:
+                    not exists s
+        if event.kind = Orogeny:
+            TerrainFeature.created(
+                planet: event.planet,
+                kind: OrogenicRange,
+                position: event.position,
+                quality: quality * 2.0,
+                born_in_epoch: event.planet.epoch_number
+            )
+        if event.kind = Supervolcano:
+            TerrainFeature.created(
+                planet: event.planet,
+                kind: BasaltPatch,
+                position: event.position,
+                quality: quality * 2.5,
+                born_in_epoch: event.planet.epoch_number
+            )
+        if event.kind = Rifting:
+            TerrainFeature.created(
+                planet: event.planet,
+                kind: RiftValley,
+                position: event.position,
+                quality: quality * 1.5,
+                born_in_epoch: event.planet.epoch_number
+            )
+        if event.kind = GlacialAdvance:
+            TerrainFeature.created(
+                planet: event.planet,
+                kind: OrogenicRange,
+                position: event.position,
+                quality: quality,
+                born_in_epoch: event.planet.epoch_number
+            )
+        event.status = resolved_handled
+        event.planet.will = event.planet.will - tier.will_cost
+    @guidance
+        Quality scales with both event maturity and charge tier:
+            quality ≈ event.maturity * tier.multiplier * 8
+        Earlier handling = small but safe; late handling = bigger but
+        riskier (the "vent at 95%" gamble). Tier multiplier compounds.
+}
+
+-- The player sacrifices an old terrain feature to nudge a ripening
+-- event back. This is the Phase-2 weak verb — it gives Will-depleted
+-- players agency at a real cost: the autobiography loses a chapter.
+rule SacrificeFeatureReducesEvent {
+    when: SacrificeFeatureTap(feature: TerrainFeature, target: Event)
+    requires: feature.is_sacrificable
+    requires: target.status = active
+    let reduction = SacrificeReduction(feature)
+    ensures:
+        target.spawned_at = target.spawned_at + reduction
+        not exists feature
+    @guidance
+        SacrificeReduction scales with feature.quality and age:
+            reduction ≈ min(feature.quality * 5.seconds, 0.5 * target.lifetime)
+        So a major old feature can buy ~half an event's lifetime;
+        a small young feature buys only 5-10 seconds.
+}
+
+-- When the queue is full, ambient geological pressure manifests as
+-- background scars rather than pausing the world. Bounds idle damage
+-- and prevents the "weaponise the cap" exploit.
+rule BackgroundScarAccumulates {
+    when: _: Planet.last_background_scar + config.background_scar_interval <= now
+    requires: planet.queue_is_full
+    let target_position = HighestScarringRegion(planet)
+    ensures:
+        Scar.created(
+            planet: planet,
+            position: target_position,
+            damage: config.background_scar_damage,
+            born_in_epoch: planet.epoch_number,
+            source_event: null
+        )
+        planet.last_background_scar = now
+    @guidance
+        Drops a scar in the most-scarred region so damage clusters
+        rather than spreading evenly. Encourages volcanic resurfacing
+        as a real strategic response (clear a region by venting it).
+}
+
+-- Stability reaching the goal advances the epoch. Geology persists;
+-- only the epoch_anchor and palette tint change.
+rule EpochAdvances {
+    when: _: Planet.stability >= config.stability_goal
+    requires: planet.epoch_number < config.epoch_count
+    let next_number = planet.epoch_number + 1
+    ensures:
+        planet.epoch_number = next_number
+        planet.epoch_name = EpochNameForNumber(next_number)
+        planet.is_cold_epoch = IsColdEpoch(next_number)
+        planet.epoch_anchor = config.stability_after_advance
+            - terrain_quality_at_advance(planet)
+            + scar_damage_at_advance(planet)
+    @guidance
+        epoch_anchor adjusts so stability re-derives to exactly
+        stability_after_advance immediately after the transition. This
+        is the implementation contract that makes "stability resets to
+        55" hold even when stability is derived from map state.
+
+        See open question StabilityCompoundingTrap — anchor calculation
+        may need to scale with epoch number so late epochs don't
+        autopilot off accumulated terrain quality.
+}
+
+-- Reaching the final epoch with stability at the goal is the
+-- terminal state: the planet rests.
+rule PlanetReachesStillness {
+    when: _: Planet.stability >= config.stability_goal
+    requires: planet.epoch_number = config.epoch_count
+    ensures:
+        PlanetRests(planet: planet)
+    @guidance
+        Implementation: surface a one-time ending beat in the log.
+        No state change — this is purely an observable narrative event.
+}
+
+------------------------------------------------------------
+-- Invariants
+------------------------------------------------------------
+
+invariant StabilityIsDerived {
+    -- Stability is never assigned directly; it is always the clamped
+    -- sum of epoch_anchor + terrain_quality - scar_damage.
+    planet.stability = clamp(
+        planet.epoch_anchor + planet.terrain_quality - planet.scar_damage,
+        0, 100
+    )
+}
+
+invariant QueueCapHonoured {
+    -- The active event count never exceeds the cap.
+    planet.active_events.count <= config.max_active_events
+}
+
+invariant SacrificeAgeRespected {
+    -- Only features old enough may be sacrificed.
+    for f in planet.features:
+        f.is_sacrificable implies f.age_in_epochs >= config.sacrifice_age_threshold
+}
+
+invariant GlacialOnlyInColdEpochs {
+    -- GlacialAdvance never spawns outside cold epochs.
+    for e in planet.events:
+        e.kind = GlacialAdvance implies planet.is_cold_epoch
+}
+
+invariant TerrainPersistsAcrossEpochs {
+    -- A feature created in epoch N is still present in epoch N+1
+    -- unless explicitly sacrificed or resurfaced.
+    @guarantee Persistence
+        Terrain features have no auto-decay rule. The only ways a
+        feature leaves the map are PlayerSacrificesFeature and the
+        resurface clause in PlayerHandlesEvent (volcanic kinds only).
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+actor Player {
+    identified_by: session.id
+}
+
+surface PlanetMap {
+    facing player: Player
+
+    context planet: Planet
+
+    exposes:
+        planet.epoch_number
+        planet.epoch_name
+        planet.stability
+        planet.will
+        planet.queue_is_full
+        for event in planet.active_events:
+            event.kind
+            event.position
+            event.maturity
+        for feature in planet.features:
+            feature.kind
+            feature.position
+            feature.quality
+            feature.is_sacrificable
+            feature.age_in_epochs
+        for scar in planet.scars:
+            scar.position
+            scar.damage
+
+    provides:
+        HandleEventTap(event, tier)
+            when event in planet.active_events
+                and planet.will >= tier.will_cost
+        SacrificeFeatureTap(feature, target)
+            when feature in planet.sacrificable_features
+                and target in planet.active_events
+
+    @guarantee MapAsAutobiography
+        Two players' planets are visibly different after epoch 5.
+        Every persistent feature corresponds to a specific past
+        decision; hovering surfaces the origin (epoch + event kind).
+
+    @guidance
+        Tap precision is fudged: a tap close to an event's centre
+        snaps to the event. A tap on empty crust does nothing (no
+        legacy "release anywhere" path). Touch targets are at least
+        ~30 effective pixels.
+}
+
+------------------------------------------------------------
+-- Open Questions
+------------------------------------------------------------
+
+open question "StabilityCompoundingTrap — does the per-epoch anchor need to scale with epoch number so late epochs don't autopilot off old terrain? Candidates: epoch-decaying quality, rising goal, anchor that subtracts accumulated quality."
+
+open question "TotalRuntimeFraming — ~5-7h total. Own as finite idle (Universal Paperclips framing) or expand late epochs?"
+
+open question "ChargeTierOpportunityCost — with Will-regen the only brake, Deep is always optimal. Other costs: miss-tap risk on long hold, Deep amplifies negatives more, cooldown after Deep."
+
+open question "BackgroundScarPosition — HighestScarringRegion concentrates damage; alternative is uniform spread. Affects queue-full strategic feel."
+
+open question "MajorEventVisualisation — minor events have 4-5 discrete stages; major events span 8-20 min. What's the visual stride for a Supervolcano growing across sessions?"
+
+------------------------------------------------------------
+-- Deferred Specifications
+------------------------------------------------------------
+
+deferred ChosenKindForEpoch              -- spawn-bias table per epoch
+deferred ChosenPositionForKind           -- position-bias by kind + map state
+deferred LifetimeForKind                 -- per-kind lifetime within the min/max range
+deferred AutoResolveDamage               -- damage formula on auto-resolve
+deferred HandledQuality                  -- quality formula on handled
+deferred SacrificeReduction              -- sacrifice strength formula
+deferred Distance                        -- 2D distance helper on Position
+deferred HighestScarringRegion           -- locate ambient scar drop point
+deferred EpochNameForNumber              -- 1 → hadean, 10 → stillness, etc.
+deferred IsColdEpoch                     -- which epochs are glacial
+deferred terrain_quality_at_advance      -- snapshot at epoch transition
+deferred scar_damage_at_advance          -- snapshot at epoch transition

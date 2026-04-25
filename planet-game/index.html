@@ -11,10 +11,10 @@
   <main>
     <header>
       <h1>Planet</h1>
-      <p class="tagline">You are the planet. Time passes through you. Pressure builds. You choose <em>when</em> and <em>where</em> to let it go — never <em>if</em>.</p>
+      <p class="tagline">You are the planet. Stresses build on your crust — release them when they ripen, ignore them and they scar.</p>
     </header>
 
-    <section class="stage" role="button" aria-label="Tap to focus the pressure and let it go here">
+    <section class="stage" aria-label="Tap a ripening event to release it">
       <canvas id="planet" aria-label="your surface, seen from above"></canvas>
     </section>
 
@@ -26,21 +26,14 @@
         <div class="bar bar-stability"><div id="stability-fill"></div><div class="goal-mark" title="era threshold"></div></div>
       </div>
       <div class="gauge">
-        <label>Pressure <span class="gauge-desc">— tectonic stress. erupts on its own at 100</span><span id="pressure-val">0</span></label>
-        <div class="bar bar-pressure"><div id="pressure-fill"></div></div>
-      </div>
-      <div class="gauge">
-        <label>Volcanic <span class="gauge-desc">— heat beneath. vents through hotspots in scarred crust</span><span id="volcanic-val">0</span></label>
-        <div class="bar bar-volcanic"><div id="volcanic-fill"></div></div>
-      </div>
-      <div class="gauge">
         <label>Will <span class="gauge-desc">— your capacity to act. 10 per deliberate release</span><span id="influence-val">0</span></label>
         <div class="bar bar-influence"><div id="influence-fill"></div></div>
       </div>
       <div class="meta">
         <span>Epoch <strong id="epoch">I</strong></span>
         <span>Age <strong id="age">0</strong></span>
-        <span>Faults <strong id="fault-count">0</strong></span>
+        <span>Events <strong id="event-count">0</strong>/5</span>
+        <span>Scars <strong id="scar-count">0</strong></span>
       </div>
     </section>
 
@@ -57,34 +50,17 @@
       <details class="help-details">
         <summary>How it works</summary>
         <div class="help-grid">
-          <div class="help-row">
-            <span class="help-swatch swatch-ridge"></span>
-            <span><strong>Ridge</strong> — a steady release. Lifted into your crust.</span>
-          </div>
-          <div class="help-row">
-            <span class="help-swatch swatch-canyon"></span>
-            <span><strong>Canyon</strong> — a rough release. Carved into your crust.</span>
-          </div>
-          <div class="help-row">
-            <span class="help-swatch swatch-eruption"></span>
-            <span><strong>Eruption</strong> — pressure reached 100 and let go without you. You don't choose where.</span>
-          </div>
-          <div class="help-row">
-            <span class="help-swatch swatch-scarring"></span>
-            <span><strong>Scarring</strong> — yellow/red halo where your faults cluster. Tectonic releases here widen the swing and bias it rough — but they also fuel volcanic pressure.</span>
-          </div>
-          <div class="help-row">
-            <span class="help-swatch swatch-hotspot"></span>
-            <span><strong>Hotspot</strong> — a pulsing vent inside scarred ground. Tap one (with Volcanic ≥ 30 and Will ≥ 10) to release heat: builds a volcanic ridge AND resurfaces nearby scars. Scarring is damage <em>and</em> fuel.</span>
-          </div>
           <p class="help-hint">
-            Two clocks run in parallel. Tectonic Pressure builds fast and creates scars. Volcanic heat builds on those scars and heals them. You balance the two.
+            <strong>Events</strong> — discrete stresses on your crust. They appear over time and ripen visibly through five stages: hairline, fissure, glowing crack, pulsing, about to rupture. Up to 5 active at once.
           </p>
           <p class="help-hint">
-            <strong>Hold to charge.</strong> A quick tap spends 10 Will (Normal). Hold briefly for Focused (50 Will, ×2 outcome). Hold longer for Deep (100 Will, ×3). A pie ring shows your charge. The multiplier cuts both ways — a Deep tap on scarred crust is a bigger <em>loss</em>. Pick ground carefully.
+            <strong>Tap to release.</strong> Tap an event before it ruptures and it becomes a permanent terrain feature on your map (a positive ridge). Ignore it long enough and it auto-resolves into a scar (permanent damage).
           </p>
           <p class="help-hint">
-            Reach stability 100 and you pass into the next epoch — your memory carries forward, but the mood shifts: ten eras from Hadean molten youth to Stillness.
+            <strong>Hold to charge.</strong> A quick tap spends 10 Will (Normal). Hold for Focused (50 Will, ×2 outcome). Hold longer for Deep (100 Will, ×3). The pie ring shows your charge.
+          </p>
+          <p class="help-hint">
+            <strong>Stability</strong> is derived from your map: features add quality, scars subtract damage. Reach 100 to enter the next epoch — features and scars carry forward, but the stability anchor resets so each epoch has its own goal.
           </p>
         </div>
       </details>
