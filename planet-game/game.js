@@ -34,6 +34,15 @@
   // Time-flow tuning (Law I)
   const MAX_CATCHUP_MS = 10 * 60 * 1000; // cap offline catchup at 10 minutes of sim-time
 
+  // Phase 2: events not ticks — discrete map phenomena that ripen visibly
+  const MAX_ACTIVE_EVENTS = 5;          // queue cap; spawning pauses when full (Phase 2). Background scars (queue-full → scar drop) is Phase 4 scope.
+  const SPAWN_INTERVAL_MIN_MS = 30 * 1000;  // shortest gap between spawns
+  const SPAWN_INTERVAL_MAX_MS = 60 * 1000;  // longest gap between spawns
+  const MINOR_EVENT_LIFETIME_MIN_MS = 45 * 1000;
+  const MINOR_EVENT_LIFETIME_MAX_MS = 120 * 1000;
+  const SCAR_DAMAGE_MIN = 3;            // damage applied when an event auto-resolves
+  const SCAR_DAMAGE_MAX = 10;
+
   // Law V tuning — density is now 2D, measured at the actual release point
   const DENSITY_SIGMA = 0.3;         // fraction of planet radius — how wide each fault's influence spreads
   const DENSITY_SCARRING_CAP = 1.5;  // saturation point for "how scarred" this area is
@@ -81,6 +90,8 @@
     scars: [],           // {x, y, damage, bornInEpoch, sourceEvent: null}
     epochAnchor: 50,
     epoch: 1,
+    lastSpawnAt: 0,                  // ms timestamp of most recent spawn
+    nextSpawnIntervalMs: 0,          // randomised interval until next spawn attempt
     paused: false,
     log: [],
     planetSeed: (Math.random() * 0xffffffff) >>> 0,
@@ -99,6 +110,8 @@
         features: state.features,
         scars: state.scars,
         epochAnchor: state.epochAnchor,
+        lastSpawnAt: state.lastSpawnAt,
+        nextSpawnIntervalMs: state.nextSpawnIntervalMs,
         log: state.log,
       }));
     } catch (_) {
@@ -128,6 +141,8 @@
     state.features    = Array.isArray(saved.features) ? saved.features : [];
     state.scars       = Array.isArray(saved.scars) ? saved.scars : [];
     state.epochAnchor = Number.isFinite(saved.epochAnchor) ? saved.epochAnchor : 50;
+    state.lastSpawnAt = Number.isFinite(saved.lastSpawnAt) ? saved.lastSpawnAt : 0;
+    state.nextSpawnIntervalMs = Number.isFinite(saved.nextSpawnIntervalMs) ? saved.nextSpawnIntervalMs : 0;
     state.log         = Array.isArray(saved.log) ? saved.log : [];
   }
 
@@ -198,6 +213,84 @@
     const a = Math.random() * Math.PI * 2;
     const r = Math.sqrt(Math.random());
     return { x: Math.cos(a) * r, y: Math.sin(a) * r };
+  }
+
+  // Inclusive-min / exclusive-max float in [min, max). Used for randomised
+  // spawn intervals and event lifetimes — anywhere we want a uniform
+  // pick in a tunable window without pulling in a full RNG abstraction.
+  function pickRandomInRange(min, max) {
+    return min + Math.random() * (max - min);
+  }
+
+  // Choose a position on the planet disk for a new event. If any scars
+  // exist, bias toward already-scarred regions (the spec's hint that the
+  // map should "telegraph" future events). Otherwise fall back to uniform.
+  //
+  // Strategy: draw K=8 candidate points uniformly on the disc; weight each
+  // by scarDensityAt(x, y) + 0.1 (the +0.1 floor keeps virgin crust in
+  // play so spawning never starves on a lightly-scarred map); then pick
+  // weighted-randomly. Phase 2 only uses StressedFault, which is naturally
+  // scar-attracted; later kinds (BuildingPlume, etc.) will swap in their
+  // own bias functions.
+  function pickSpawnPosition() {
+    if (state.scars.length === 0) return randomDiskPoint();
+    const K = 8;
+    const candidates = [];
+    let total = 0;
+    for (let i = 0; i < K; i++) {
+      const p = randomDiskPoint();
+      const w = scarDensityAt(p.x, p.y) + 0.1;
+      candidates.push({ p, w });
+      total += w;
+    }
+    let pick = Math.random() * total;
+    for (const c of candidates) {
+      pick -= c.w;
+      if (pick <= 0) return c.p;
+    }
+    return candidates[candidates.length - 1].p;
+  }
+
+  // Spawn a new active event on the planet. Honours the queue cap; updates
+  // the spawn-cadence bookkeeping so the next attempt waits a fresh
+  // randomised interval. Phase 2 ships StressedFault only; the spec lists
+  // five more kinds (BuildingPlume, Orogeny, Supervolcano, Rifting,
+  // GlacialAdvance) for later phases.
+  function spawnEvent() {
+    if (state.events.length >= MAX_ACTIVE_EVENTS) return;
+    const pos = pickSpawnPosition();
+    const lifetime = pickRandomInRange(MINOR_EVENT_LIFETIME_MIN_MS, MINOR_EVENT_LIFETIME_MAX_MS);
+    state.events.push({
+      kind: 'StressedFault',     // only event type in PR 1; v1 spec lists 5 more for later phases
+      x: pos.x,
+      y: pos.y,
+      spawnedAt: performance.now(),
+      lifetime,
+      status: 'active',
+    });
+    state.lastSpawnAt = performance.now();
+    state.nextSpawnIntervalMs = pickRandomInRange(SPAWN_INTERVAL_MIN_MS, SPAWN_INTERVAL_MAX_MS);
+  }
+
+  // Event ripeness in [0, 1]. 0 = just spawned, 1 = ready to auto-resolve.
+  // Read off wall-clock so backgrounded tabs catch up correctly when the
+  // tick loop drains its accumulator.
+  function eventMaturity(event) {
+    return clamp((performance.now() - event.spawnedAt) / event.lifetime, 0, 1);
+  }
+
+  // Convert a fully-mature active event into a Scar. Status flips to
+  // 'resolved_auto' so the next sweep filters it out of state.events.
+  function autoResolveEvent(event) {
+    const damage = pickRandomInRange(SCAR_DAMAGE_MIN, SCAR_DAMAGE_MAX);
+    state.scars.push({
+      x: event.x,
+      y: event.y,
+      damage,
+      bornInEpoch: state.epoch,
+      sourceEvent: event.kind,
+    });
+    event.status = 'resolved_auto';
   }
 
   // Deterministic integer-lattice hash → [0, 1). Seeded so the same planet
@@ -310,6 +403,27 @@
 
     const dt = TICK_MS / 1000;
     state.influence += INFLUENCE_BASE * dt;
+
+    // Spawn cadence — fire a spawn attempt when the next interval has elapsed
+    // and the queue has room.
+    const now = performance.now();
+    if (state.lastSpawnAt === 0) {
+      state.lastSpawnAt = now;
+      state.nextSpawnIntervalMs = pickRandomInRange(SPAWN_INTERVAL_MIN_MS, SPAWN_INTERVAL_MAX_MS);
+    }
+    if (now - state.lastSpawnAt >= state.nextSpawnIntervalMs && state.events.length < MAX_ACTIVE_EVENTS) {
+      spawnEvent();
+    }
+
+    // Auto-resolve any event whose maturity has hit 1.0
+    for (const event of state.events) {
+      if (event.status === 'active' && eventMaturity(event) >= 1.0) {
+        autoResolveEvent(event);
+      }
+    }
+
+    // Sweep resolved events out of the active list
+    state.events = state.events.filter(e => e.status === 'active');
   }
 
   // Epoch advance — kept here so Phase 4 can wire it back in once stability
