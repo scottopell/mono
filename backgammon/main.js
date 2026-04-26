@@ -122,6 +122,7 @@
     btnNewGame: document.getElementById('btn-new-game'),
     btnRejoin: document.getElementById('btn-rejoin'),
     btnLocal: document.getElementById('btn-local'),
+    btnJoin: document.getElementById('btn-join'),
     joinForm: document.getElementById('join-form'),
     joinCode: document.getElementById('join-code'),
     lobbyError: document.getElementById('lobby-error'),
@@ -162,12 +163,42 @@
     el.statusDot.title = 'connection: ' + s;
   }
 
+  // Lobby button feedback. Without this the user taps Join/New Game and
+  // the page sits unchanged for several seconds while signaling rounds
+  // happen in the background — looks broken, invites spamming. We
+  // disable the affected buttons and swap their labels for a "…ing"
+  // form, then restore on error or when the screen transitions away
+  // from the lobby.
+  const LOBBY_BTN_DEFAULTS = {
+    btnNewGame: 'New Game',
+    btnJoin: 'Join',
+    btnLocal: 'Play locally (one device)',
+    // btnRejoin's label is dynamic ("Rejoin game (CODE)") — set by
+    // refreshLobbyResumeUi rather than this map.
+  };
+
+  function setLobbyBusy(action) {
+    // action: 'starting' | 'joining' | 'rejoining' | null
+    const busy = action != null;
+    [el.btnNewGame, el.btnJoin, el.btnLocal, el.btnRejoin].forEach((b) => {
+      if (b) b.disabled = busy;
+    });
+    if (el.joinCode) el.joinCode.disabled = busy;
+    if (action === 'starting' && el.btnNewGame) el.btnNewGame.textContent = 'Starting…';
+    else if (el.btnNewGame) el.btnNewGame.textContent = LOBBY_BTN_DEFAULTS.btnNewGame;
+    if (action === 'joining' && el.btnJoin) el.btnJoin.textContent = 'Joining…';
+    else if (el.btnJoin) el.btnJoin.textContent = LOBBY_BTN_DEFAULTS.btnJoin;
+    if (action === 'rejoining' && el.btnRejoin) el.btnRejoin.textContent = 'Rejoining…';
+    else if (el.btnRejoin && action == null) refreshLobbyResumeUi();
+  }
+
   // --- Lobby: host ---
 
   el.btnNewGame.addEventListener('click', () => {
     el.lobbyError.textContent = '';
     clearSession();   // brand-new game replaces any stale saved session
     setUrlHash(null);
+    setLobbyBusy('starting');
     startHost();
   });
 
@@ -175,6 +206,7 @@
     el.lobbyError.textContent = '';
     const saved = loadSession();
     if (!saved) { refreshLobbyResumeUi(); return; }
+    setLobbyBusy('rejoining');
     if (saved.role === 'bottom') {
       startHost({ resume: { code: saved.code, state: saved.state } });
     } else if (saved.role === 'top') {
@@ -243,6 +275,7 @@
         el.lobbyError.textContent = `Could not start room${detail}. Try again.`;
         showScreen('lobby');
         setStatus('idle');
+        setLobbyBusy(null);
       },
     });
   }
@@ -279,7 +312,7 @@
     clearSession();
     setUrlHash(null);
     setStatus('idle');
-    refreshLobbyResumeUi();
+    setLobbyBusy(null);
     showScreen('lobby');
   });
 
@@ -307,6 +340,7 @@
       return;
     }
     el.lobbyError.textContent = '';
+    setLobbyBusy('joining');
     startGuest(code);
   });
 
@@ -358,7 +392,7 @@
         // The saved session (if any) is left alone — a network blip
         // shouldn't wipe a user's in-progress game.
         setUrlHash(null);
-        refreshLobbyResumeUi();
+        setLobbyBusy(null);
       },
     });
   }
