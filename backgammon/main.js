@@ -232,7 +232,15 @@
       onMessage: handlePeerMessage,
       onError: (err) => {
         console.error('[host] error:', err);
-        el.lobbyError.textContent = 'Could not start room. Try again.';
+        // Tear down the dead peer so the next "New Game" doesn't leave a
+        // zombie holding the old room code in the signaling server.
+        if (app.peerApi) try { app.peerApi.close(); } catch (_) {}
+        app.peerApi = null;
+        app.role = null;
+        app.me = null;
+        app.savedCode = null;
+        const detail = err && err.type ? ` (${err.type})` : '';
+        el.lobbyError.textContent = `Could not start room${detail}. Try again.`;
         showScreen('lobby');
         setStatus('idle');
       },
@@ -331,9 +339,13 @@
       onMessage: handlePeerMessage,
       onError: (err) => {
         console.error('[guest] error:', err);
-        const msg = err.message === 'timeout' || err.message === 'peer-unavailable'
-          ? "Couldn't reach that room — check the code."
-          : 'Connection error. Try again.';
+        let msg;
+        if (err.message === 'timeout' || err.message === 'peer-unavailable') {
+          msg = "Couldn't reach that room — check the code.";
+        } else {
+          const detail = err && err.type ? ` (${err.type})` : '';
+          msg = `Connection error${detail}. Try again.`;
+        }
         el.lobbyError.textContent = msg;
         setStatus('idle');
         showScreen('lobby');
