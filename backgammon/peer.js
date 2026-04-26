@@ -58,6 +58,21 @@
     return { debug: 1, config: { iceServers } };
   }
 
+  // PeerJS errors that are recoverable through PeerJS's own reconnect
+  // path (signaling drops, transient network blips). When these fire
+  // after the peer is already open we used to bubble them to onError,
+  // which kicked the host back to lobby — making the system wildly
+  // fragile to peerjs.com signaling hiccups. Now we let the
+  // 'disconnected' event handler run peer.reconnect() and just surface
+  // 'reconnecting' status to the UI.
+  const RECOVERABLE_ERROR_TYPES = new Set([
+    'network',
+    'disconnected',
+    'server-error',
+    'socket-error',
+    'socket-closed',
+  ]);
+
   // -------- Host --------
 
   // forceCode: if provided, the host MUST claim that exact peer ID (used by
@@ -72,6 +87,7 @@
     let closed = false;
     let idRetries = 0;
     let forceCodeRetries = 0;
+    let peerOpened = false;
     const FORCE_CODE_MAX_RETRIES = 5;       // ~10–30s with exponential backoff
     const FORCE_CODE_BASE_MS = 1500;
 
@@ -91,6 +107,7 @@
 
       peer.on('open', () => {
         if (closed) return;
+        peerOpened = true;
         onStatus && onStatus('waiting');
       });
 
@@ -140,6 +157,16 @@
             openPeerWithNewCode();
             return;
           }
+        }
+        // After the peer is open, transient signaling/network errors
+        // shouldn't kick the user back to lobby — peerjs.com hiccups
+        // happen often enough that bouncing the player loses real games.
+        // Surface reconnecting status; PeerJS auto-reconnect (via the
+        // 'disconnected' event we wired above) handles recovery.
+        if (peerOpened && err && RECOVERABLE_ERROR_TYPES.has(err.type)) {
+          console.warn('[backgammon] host peer transient error (recovering):', err);
+          onStatus && onStatus('reconnecting');
+          return;
         }
         console.error('[backgammon] host peer error:', err);
         onError && onError(err);
@@ -233,6 +260,15 @@
       if (err && err.type === 'peer-unavailable') {
         clearTimeout(joinTimer);
         onError && onError(new Error('peer-unavailable'));
+        return;
+      }
+      // After we've connected once, ride out transient signaling/network
+      // errors via PeerJS's reconnect rather than throwing the user back
+      // to the lobby. Only surface fatal errors (and pre-connect failures)
+      // to the caller.
+      if (connectedOnce && err && RECOVERABLE_ERROR_TYPES.has(err.type)) {
+        console.warn('[backgammon] guest peer transient error (recovering):', err);
+        onStatus && onStatus('reconnecting');
         return;
       }
       onError && onError(err);
