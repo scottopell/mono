@@ -24,7 +24,10 @@
   const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const CODE_LENGTH = 6;
   const PEER_PREFIX = 'bg26-';
-  const JOIN_TIMEOUT_MS = 10000;
+  // Bumped from 10s to 25s so the peer-unavailable retry window
+  // (1.5s + 3s + 4.5s of backoff plus signaling round-trips) doesn't
+  // get cut off prematurely on flaky cellular networks.
+  const JOIN_TIMEOUT_MS = 25000;
   const MAX_HOST_ID_RETRIES = 5;
   const MAX_RECONNECT_ATTEMPTS = 3;
   const RECONNECT_BASE_MS = 500;
@@ -53,7 +56,23 @@
         credential: cfg.credential,
       });
     } else {
-      console.warn('[backgammon] No TURN config found — STUN only.');
+      // Most cellular carriers use symmetric NAT, which STUN can't punch
+      // through. Without a TURN relay, two phones on 4G/5G simply can't
+      // reach each other. Open Relay's free TURN servers cover this case
+      // for users who haven't deployed their own coturn yet. The relay
+      // sees encrypted DTLS/SRTP, not the actual game data, but for a
+      // private game it's worth being aware: ICE may pick the relay path
+      // on cellular even when a direct path would have worked on Wi-Fi.
+      iceServers.push({
+        urls: [
+          'turn:openrelay.metered.ca:80',
+          'turn:openrelay.metered.ca:443',
+          'turn:openrelay.metered.ca:443?transport=tcp',
+        ],
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      });
+      console.info('[backgammon] using Open Relay public TURN fallback (no config.js).');
     }
     return { debug: 1, config: { iceServers } };
   }
@@ -255,9 +274,29 @@
       }, RECONNECT_BASE_MS);
     });
 
+    let peerUnavailableRetries = 0;
+    const PEER_UNAVAILABLE_MAX_RETRIES = 3;
+    const PEER_UNAVAILABLE_BACKOFF_MS = 1500;
+
     peer.on('error', (err) => {
       if (closed) return;
       if (err && err.type === 'peer-unavailable') {
+        // The host's signaling registration can briefly drop on flaky
+        // cellular networks even though the host UI shows "waiting." A
+        // single peer-unavailable doesn't necessarily mean the wrong code
+        // — try a few more times before giving up. If we haven't connected
+        // before AND we've exhausted retries, surface the original error.
+        if (!connectedOnce && peerUnavailableRetries < PEER_UNAVAILABLE_MAX_RETRIES) {
+          peerUnavailableRetries += 1;
+          console.warn(`[backgammon] guest peer-unavailable, retry ${peerUnavailableRetries}/${PEER_UNAVAILABLE_MAX_RETRIES}`);
+          onStatus && onStatus('reconnecting');
+          setTimeout(() => {
+            if (closed) return;
+            try { attachConn(peer.connect(targetPeerId, { reliable: true })); }
+            catch (e) { /* will surface via the next error event */ }
+          }, PEER_UNAVAILABLE_BACKOFF_MS * peerUnavailableRetries);
+          return;
+        }
         clearTimeout(joinTimer);
         onError && onError(new Error('peer-unavailable'));
         return;
