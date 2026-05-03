@@ -1,0 +1,69 @@
+    Updating crates.io index
+     Locking 26 packages to latest compatible versions
+ Downloading crates ...
+  Downloaded approx v0.5.1
+  Downloaded ryu v1.0.20
+  Downloaded serde_derive v1.0.228
+  Downloaded unicode-ident v1.0.22
+  Downloaded serde_core v1.0.228
+  Downloaded serde_json v1.0.145
+  Downloaded serde v1.0.228
+  Downloaded libm v0.2.15
+  Downloaded geojson v0.24.2
+  Downloaded memchr v2.7.6
+  Downloaded num-traits v0.2.19
+  Downloaded cc v1.2.46
+  Downloaded jemallocator v0.5.4
+  Downloaded autocfg v1.5.0
+  Downloaded thiserror-impl v2.0.17
+  Downloaded thiserror v2.0.17
+  Downloaded shlex v1.3.0
+  Downloaded quote v1.0.42
+  Downloaded proc-macro2 v1.0.103
+  Downloaded log v0.4.28
+  Downloaded syn v2.0.110
+  Downloaded geo-types v0.7.17
+  Downloaded find-msvc-tools v0.1.5
+  Downloaded itoa v1.0.15
+  Downloaded jemalloc-sys v0.5.4+5.3.0-patched
+  Downloaded libc v0.2.177
+   Compiling proc-macro2 v1.0.103
+   Compiling quote v1.0.42
+   Compiling unicode-ident v1.0.22
+   Compiling serde_core v1.0.228
+   Compiling shlex v1.3.0
+   Compiling autocfg v1.5.0
+   Compiling libm v0.2.15
+   Compiling find-msvc-tools v0.1.5
+   Compiling serde v1.0.228
+   Compiling libc v0.2.177
+   Compiling thiserror v2.0.17
+   Compiling serde_json v1.0.145
+   Compiling itoa v1.0.15
+   Compiling memchr v2.7.6
+   Compiling ryu v1.0.20
+   Compiling log v0.4.28
+   Compiling cc v1.2.46
+   Compiling num-traits v0.2.19
+   Compiling jemalloc-sys v0.5.4+5.3.0-patched
+   Compiling syn v2.0.110
+   Compiling serde_derive v1.0.228
+   Compiling thiserror-impl v2.0.17
+   Compiling geo-types v0.7.17
+   Compiling geojson v0.24.2
+   Compiling jemallocator v0.5.4
+   Compiling glibc-malloc-crash v0.1.0 (/home/user/mono/glibc-malloc-crash)
+    Finished `release` profile [optimized] target(s) in 1m 13s
+     Running tests/test_pure_std_repro.rs (target/release/deps/test_pure_std_repro-59b8ba70a4e4ec1d)
+
+running 1 test
+
+[TEST] Pure std: Concurrent large String + Vec growth
+[TEST] String size: 14680064 bytes
+[THREAD 0] Starting work...
+[THREAD 1] Starting work...
+[THREAD 2] Starting work...
+error: test failed, to rerun pass `--test test_pure_std_repro`
+
+Caused by:
+  process didn't exit successfully: `/home/user/mono/glibc-malloc-crash/target/release/deps/test_pure_std_repro-59b8ba70a4e4ec1d test_concurrent_string_and_vec_growth --nocapture` (signal: 11, SIGSEGV: invalid memory reference)
