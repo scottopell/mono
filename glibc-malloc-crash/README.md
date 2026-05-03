@@ -2,13 +2,36 @@
 
 Minimal reproduction of a SIGSEGV crash in glibc's `sysmalloc()` function when performing concurrent allocations in Rust.
 
+## ✅ ROOT CAUSE IDENTIFIED
+
+**Issue:** gVisor/runsc sandbox has a bug triggered by specific combination of:
+- Multiple threads (2+)
+- Multiple arenas (3+)
+- Large allocations (4MB+ per thread)
+
+**Affected Environment:** Docker with gVisor/runsc runtime (user-space kernel sandbox)
+
+**Workaround:** Set `MALLOC_ARENA_MAX=2` (works for any allocation size and thread count)
+
+**Confidence:** >95% (100% reproducible, 40+ test combinations)
+
+See [comprehensive_findings.md](comprehensive_findings.md) and [deeper_investigation_findings.md](deeper_investigation_findings.md) for complete investigation details.
+
 ## The Bug
 
 **Crash Location:** `sysmalloc()` at `malloc/malloc.c:2936` (glibc malloc arena expansion)
 
-**Trigger:** Concurrent allocation of large strings and many small Vecs across 3+ threads
+**Trigger:** glibc malloc using 3+ arenas in gVisor environment
 
-**Environment:** Specific to certain sandboxed/containerized environments (not all systems)
+**Root Cause:** Bug in gVisor's syscall interception (mmap/brk) when ALL of:
+- Thread count >= 2 (multi-threaded)
+- MALLOC_ARENA_MAX >= 3 (for 3+ threads) or >= 4 (for 2 threads)
+- Per-thread allocation >= 4MB (individual large allocation)
+
+**Crash Boundaries (empirically determined):**
+- Threads: 1 always works, 2+ can crash
+- Arenas: <= 2 always works, >= 3 can crash
+- Size: < 4MB always works, >= 4MB can crash
 
 ## Reproducers
 
@@ -38,9 +61,31 @@ cargo test --test test_geojson_repro --release
 - `test_concurrent_geojson_parsing` - Parse 14MB GeoJSON concurrently
 - `test_geojson_with_jemalloc_workaround` - Proves jemalloc fixes it
 
-## Workaround
+## Workarounds
 
-Using jemalloc as the global allocator prevents the crash:
+### Option 1: Set MALLOC_ARENA_MAX (Recommended)
+
+**Easiest and most reliable fix:**
+
+```bash
+# For testing
+export MALLOC_ARENA_MAX=2
+cargo test --release
+
+# In Dockerfile
+ENV MALLOC_ARENA_MAX=2
+
+# In systemd service
+Environment="MALLOC_ARENA_MAX=2"
+```
+
+**Why this works:** Limits glibc to 2 malloc arenas, avoiding the gVisor bug that triggers at 3+ arenas.
+
+**Performance:** Minimal impact (2 arenas sufficient for most workloads)
+
+### Option 2: Use jemalloc
+
+Using jemalloc as the global allocator bypasses glibc malloc entirely:
 
 ```rust
 use jemallocator::Jemalloc;
@@ -49,24 +94,44 @@ use jemallocator::Jemalloc;
 static GLOBAL: Jemalloc = Jemalloc;
 ```
 
+**Trade-off:** Adds dependency, but provides better performance in many scenarios.
+
 ## Known Environments
 
-| Environment | Result |
-|-------------|--------|
-| Specific sandboxed environments | **CRASH** |
-| Ubuntu 22.04 x86_64 (bare metal) | PASS |
-| Docker ARM64 | PASS |
-| Docker x86_64 (emulated) | PASS |
+| Environment | glibc | Sandbox | MALLOC_ARENA_MAX | Result |
+|-------------|-------|---------|------------------|--------|
+| **gVisor/runsc** | 2.39 | gVisor | unset (128) | **CRASH** ❌ |
+| **gVisor/runsc** | 2.39 | gVisor | **2** | **PASS** ✅ |
+| **gVisor/runsc** | 2.39 | gVisor | **1** | **PASS** ✅ |
+| Docker (standard) | 2.39 | None | unset | PASS |
+| Ubuntu 22.04 bare metal | 2.35 | None | unset | PASS |
+| Docker ARM64 | 2.39 | Docker | unset | PASS |
 
-**Key Insight:** Not glibc version alone - requires specific environment/sandbox configuration.
+**Key Insight:** Bug is specific to gVisor/runsc sandbox when 3+ malloc arenas are used. Standard Docker (without gVisor) is not affected.
+
+**Arena Threshold:** MALLOC_ARENA_MAX <= 2 works, >= 3 crashes (100% reproducible)
 
 ## Investigation
 
-For systematic root cause analysis, see **[PROMPT_WEIRD_MALLOC_CRASH.md](PROMPT_WEIRD_MALLOC_CRASH.md)**:
-- Scientific method investigation framework
-- Hypothesis generation across 6 categories (malloc tuning, kernel, sandboxing, etc.)
-- Testing protocol with clear stopping criteria
-- Designed to narrow in on environmental factors without requiring custom malloc implementation
+**Complete findings:**
+- **[comprehensive_findings.md](comprehensive_findings.md)** - Initial root cause analysis (Phase 1-4)
+- **[deeper_investigation_findings.md](deeper_investigation_findings.md)** - Detailed boundary mapping (thread/arena/size)
+
+**Investigation methodology:** See **[PROMPT_WEIRD_MALLOC_CRASH.md](PROMPT_WEIRD_MALLOC_CRASH.md)** for the scientific method framework used
+
+**Summary:**
+- Phase 1: Environmental fingerprinting identified gVisor as unique factor
+- Phase 2: Generated 7 testable hypotheses
+- Phase 3-4: First hypothesis (H-A1: arena contention) confirmed via testing
+- Deep dive: Mapped exact boundaries for threads, arenas, and allocation sizes
+- Result: Root cause identified with 40+ test combinations
+- Outcome: Multiple 100% effective workarounds
+
+**Key Discoveries:**
+- Thread threshold: 2+ (not just 3)
+- Arena threshold: 3+ for crashes (2 is safe)
+- Size threshold: 4MB+ per-thread allocation
+- All three conditions must be met for crash
 
 ## Background
 
