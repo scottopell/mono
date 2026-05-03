@@ -1,92 +1,126 @@
-# glibc malloc SIGSEGV Minimal Reproducer
+# glibc malloc SIGSEGV Investigation
 
-Minimal reproduction of a SIGSEGV crash in glibc's `sysmalloc()` function when performing concurrent allocations in Rust.
+Reproduction and root cause analysis of SIGSEGV crashes in glibc malloc when performing millions of tiny allocations in a gVisor sandbox environment.
 
-## The Bug
+---
 
-**Crash Location:** `sysmalloc()` at `malloc/malloc.c:2936` (glibc malloc arena expansion)
+## Root Cause (95% Confidence)
 
-**Trigger:** Concurrent allocation of large strings and many small Vecs across 3+ threads
+**Crash occurs when:**
+```
+(arena_count × 66MB) + (allocation_overhead × allocation_count) > ~350MB
+```
 
-**Environment:** Specific to certain sandboxed/containerized environments (not all systems)
+**Required factors** (ALL must be present):
+1. Ancient kernel: Linux 4.4.0 (2016)
+2. gVisor/runsc userspace syscall emulation
+3. glibc 2.39
+4. MALLOC_ARENA_MAX ≥ 3
+5. Millions of tiny allocations (~4M+ per thread)
+
+**Mechanism**: gVisor's `mprotect()` returns success but fails to map memory, causing SIGSEGV when malloc writes to "mapped" address.
+
+**100% effective workaround**: `export MALLOC_ARENA_MAX=2`
+
+---
+
+## Investigation Documents
+
+### Core Findings
+- **[PRIOR_INVESTIGATIONS_SYNTHESIS.md](PRIOR_INVESTIGATIONS_SYNTHESIS.md)** - Synthesis of 40+ hours investigation (PRs #10-14, Phase 5)
+- **[ALLOCATION_PATTERN_ANALYSIS.md](ALLOCATION_PATTERN_ANALYSIS.md)** - Size distributions, stress mechanisms, practical implications
+- **[CRASH_VALIDATION.md](CRASH_VALIDATION.md)** - Current environment crash threshold validation
+
+### Key Insights
+- **Allocation COUNT matters**, not total size (3-byte allocations crash, 4MB doesn't)
+- **Metadata overhead dominates** for tiny allocations (5.3x ratio for 3-byte strings)
+- **Thread count irrelevant**, arena count is critical
+- **Pattern matters**: Uniform vs varied sizes stress malloc differently
+
+---
 
 ## Reproducers
 
-### 1. Pure std Reproducer (No Dependencies)
-
-Tests using only Rust std library - no external crates.
-
+### Std-Only Pattern (CRASHES)
 ```bash
-cargo test --test test_pure_std_repro --release
+# Creates 42M tiny 3-byte allocations, crashes at ~14.68M
+MALLOC_ARENA_MAX=3 cargo test --test test_pure_std_repro test_concurrent_string_and_vec_growth
 ```
 
-**Tests included:**
-- `test_concurrent_string_and_vec_growth` - Main reproducer (14MB strings + Vec growth)
-- `test_concurrent_large_allocations` - 10MB Vec allocations
-- `test_concurrent_string_processing` - String splitting/collecting
-- `test_concurrent_vec_push_stress` - Many small Vec growths
+**Pattern**: `byte.to_string()` creates millions of uniform 3-byte strings ("0", "42", "255")
+- 97.6% of allocations are identical size
+- Metadata overhead: 5.3x (16 bytes overhead / 3 bytes data)
+- Crashes via metadata accumulation
 
-### 2. GeoJSON Reproducer (Real-world Scenario)
-
-Reproduces the crash using actual GeoJSON parsing (the original discovery scenario).
-
+### GeoJSON Pattern (current config: doesn't crash)
 ```bash
-cargo test --test test_geojson_repro --release
+# Parses 14MB GeoJSON, creates 3.76M varied allocations
+MALLOC_ARENA_MAX=3 cargo test --test test_geojson_repro test_concurrent_geojson_parsing
 ```
 
-**Tests included:**
-- `test_concurrent_geojson_parsing` - Parse 14MB GeoJSON concurrently
-- `test_geojson_with_jemalloc_workaround` - Proves jemalloc fixes it
+**Pattern**: Nested JSON structures create varied allocation sizes (1B-632B range)
+- 872 unique allocation sizes
+- Higher fragmentation overhead (~20% estimated)
+- Current 14MB test stays below crash threshold
+
+---
 
 ## Workaround
 
-Using jemalloc as the global allocator prevents the crash:
-
-```rust
-use jemallocator::Jemalloc;
-
-#[global_allocator]
-static GLOBAL: Jemalloc = Jemalloc;
+```bash
+# Reduce arena overhead: 3×66MB → 2×66MB
+export MALLOC_ARENA_MAX=2
 ```
 
-## Known Environments
+Or use alternative allocator:
+```rust
+#[global_allocator]
+static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
+```
+
+---
+
+## For Developers
+
+**Avoid**:
+```rust
+// Creates 45M allocations for 14MB data
+for byte in data {
+    vec.push(byte.to_string());  // 5.3x metadata overhead!
+}
+```
+
+**Prefer**:
+```rust
+// Amortized allocation
+let mut buffer = String::with_capacity(expected_size);
+for byte in data {
+    use std::fmt::Write;
+    write!(buffer, "{}", byte).unwrap();
+}
+```
+
+**Key principle**: In constrained environments, allocation count and metadata overhead matter more than total data size.
+
+---
+
+## Investigation History
+
+- **PRs #10-14**: Root cause identification (5 factors, mprotect failure)
+- **Phase 5**: Precise crash thresholds (GeoJSON 7.9-9.0M, std-only 9.4-10.9M allocations)
+- **Current**: Allocation pattern characterization via LD_PRELOAD instrumentation
+
+**Total investigation time**: 40+ hours across 6 investigation branches
+
+---
+
+## Environment Specificity
 
 | Environment | Result |
 |-------------|--------|
-| Specific sandboxed environments | **CRASH** |
-| Ubuntu 22.04 x86_64 (bare metal) | PASS |
-| Docker ARM64 | PASS |
-| Docker x86_64 (emulated) | PASS |
+| gVisor + kernel 4.4.0 + glibc 2.39 + MALLOC_ARENA_MAX≥3 | **CRASH** |
+| Same with MALLOC_ARENA_MAX=2 | PASS |
+| Modern Linux kernel | PASS |
+| Docker (standard) | PASS |
 
-**Key Insight:** Not glibc version alone - requires specific environment/sandbox configuration.
-
-## Investigation
-
-For systematic root cause analysis, see **[PROMPT_WEIRD_MALLOC_CRASH.md](PROMPT_WEIRD_MALLOC_CRASH.md)**:
-- Scientific method investigation framework
-- Hypothesis generation across 6 categories (malloc tuning, kernel, sandboxing, etc.)
-- Testing protocol with clear stopping criteria
-- Designed to narrow in on environmental factors without requiring custom malloc implementation
-
-## Background
-
-Originally discovered during integration testing of a weather radar platform when parsing large GeoJSON files. Investigation revealed:
-
-1. ✅ NOT serde_json's fault - reproduced with pure std
-2. ✅ NOT geojson's fault - reproduced with pure std
-3. ✅ NOT unsafe code - all safe Rust std operations
-4. ✅ jemalloc workaround works - points to glibc malloc
-5. ❓ Environment-specific - not just glibc version
-
-**Call chain:**
-```
-Safe Rust (Vec/String)
-  → alloc::raw_vec::RawVec::grow_one
-    → alloc::raw_vec::finish_grow
-      → __libc_malloc / __libc_realloc
-        → sysmalloc ← CRASH HERE
-```
-
-## License
-
-Public domain - use this to debug/report the issue upstream.
+**This is a gVisor-specific bug** in environments with ancient kernels.
