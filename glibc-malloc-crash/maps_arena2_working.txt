@@ -1,0 +1,56 @@
+00065000-0006a000 r-xp 00000000 00:00 0                                  [usertrap]
+55a2b94f2000-55a2b9528000 r--p 00000000 00:11 2991                       /home/user/mono/glibc-malloc-crash/target/release/deps/test_pure_std_repro-59b8ba70a4e4ec1d
+55a2b9528000-55a2b95ca000 r-xp 00035000 00:11 2991                       /home/user/mono/glibc-malloc-crash/target/release/deps/test_pure_std_repro-59b8ba70a4e4ec1d
+55a2b95ca000-55a2b95d7000 r--p 000d6000 00:11 2991                       /home/user/mono/glibc-malloc-crash/target/release/deps/test_pure_std_repro-59b8ba70a4e4ec1d
+55a2b95d7000-55a2b95d8000 rw-p 000e2000 00:11 2991                       /home/user/mono/glibc-malloc-crash/target/release/deps/test_pure_std_repro-59b8ba70a4e4ec1d
+55a2b95d8000-55a2d2190000 rw-p 00000000 00:00 0                          [heap]
+7ee86f0df000-7ee86f8df000 rw-p 00000000 00:00 0                          [stack]
+7ef364000000-7ef36a494000 rw-p 00000000 00:00 0 
+7ef36a494000-7ef36c000000 ---p 00000000 00:00 0 
+7ef36c000000-7ef36fffb000 rw-p 00000000 00:00 0 
+7ef36fffb000-7ef370000000 ---p 00000000 00:00 0 
+7ef372000000-7ef372e01000 rw-p 00000000 00:00 0 
+7ef373000000-7ef373e01000 rw-p 00000000 00:00 0 
+7ef374000000-7ef377fff000 rw-p 00000000 00:00 0 
+7ef377fff000-7ef378000000 ---p 00000000 00:00 0 
+7ef3787fd000-7ef3787fe000 ---p 00000000 00:00 0 
+7ef3787fe000-7ef3789fe000 rw-p 00000000 00:00 0 
+7ef3789fe000-7ef3789ff000 ---p 00000000 00:00 0 
+7ef3789ff000-7ef378bff000 rw-p 00000000 00:00 0 
+7ef378bff000-7ef378c00000 ---p 00000000 00:00 0 
+7ef378c00000-7ef378e00000 rw-p 00000000 00:00 0 
+7ef378e00000-7ef379c01000 rw-p 00000000 00:00 0 
+7ef379e00000-7ef37ac01000 rw-p 00000000 00:00 0 
+7ef37adce000-7ef37adff000 rw-p 00000000 00:00 0 
+7ef37adff000-7ef37ae00000 ---p 00000000 00:00 0 
+7ef37ae00000-7ef37b000000 rw-p 00000000 00:00 0 
+7ef37b000000-7ef37b028000 r--p 00000000 00:11 48                         /usr/lib/x86_64-linux-gnu/libc.so.6
+7ef37b028000-7ef37b1b0000 r-xp 00028000 00:11 48                         /usr/lib/x86_64-linux-gnu/libc.so.6
+7ef37b1b0000-7ef37b1ff000 r--p 001b0000 00:11 48                         /usr/lib/x86_64-linux-gnu/libc.so.6
+7ef37b1ff000-7ef37b203000 r--p 001fe000 00:11 48                         /usr/lib/x86_64-linux-gnu/libc.so.6
+7ef37b203000-7ef37b205000 rw-p 00202000 00:11 48                         /usr/lib/x86_64-linux-gnu/libc.so.6
+7ef37b205000-7ef37b212000 rw-p 00000000 00:00 0 
+7ef37b22b000-7ef37b22c000 ---p 00000000 00:00 0 
+7ef37b22c000-7ef37b22e000 rw-p 00000000 00:00 0 
+7ef37b22e000-7ef37b22f000 ---p 00000000 00:00 0 
+7ef37b22f000-7ef37b231000 rw-p 00000000 00:00 0 
+7ef37b231000-7ef37b234000 rw-p 00000000 00:00 0 
+7ef37b234000-7ef37b238000 r--p 00000000 00:11 582                        /usr/lib/x86_64-linux-gnu/libgcc_s.so.1
+7ef37b238000-7ef37b25c000 r-xp 00004000 00:11 582                        /usr/lib/x86_64-linux-gnu/libgcc_s.so.1
+7ef37b25c000-7ef37b260000 r--p 00028000 00:11 582                        /usr/lib/x86_64-linux-gnu/libgcc_s.so.1
+7ef37b260000-7ef37b261000 r--p 0002b000 00:11 582                        /usr/lib/x86_64-linux-gnu/libgcc_s.so.1
+7ef37b261000-7ef37b262000 rw-p 0002c000 00:11 582                        /usr/lib/x86_64-linux-gnu/libgcc_s.so.1
+7ef37b262000-7ef37b263000 ---p 00000000 00:00 0 
+7ef37b263000-7ef37b265000 rw-p 00000000 00:00 0 
+7ef37b265000-7ef37b266000 ---p 00000000 00:00 0 
+7ef37b266000-7ef37b268000 rw-p 00000000 00:00 0 
+7ef37b268000-7ef37b269000 ---p 00000000 00:00 0 
+7ef37b269000-7ef37b26b000 rw-p 00000000 00:00 0 
+7ef37b26b000-7ef37b26d000 rw-p 00000000 00:00 0 
+7ef37b26d000-7ef37b26e000 r--p 00000000 00:00 0                          [vvar]
+7ef37b26e000-7ef37b270000 r-xp 00000000 00:00 0 
+7ef37b270000-7ef37b271000 r--p 00000000 00:11 45                         /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7ef37b271000-7ef37b29c000 r-xp 00001000 00:11 45                         /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7ef37b29c000-7ef37b2a8000 r--p 0002c000 00:11 45                         /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7ef37b2a8000-7ef37b2aa000 rw-p 00038000 00:11 45                         /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+ffffffffff600000-ffffffffff601000 r-xp 00000000 00:00 0                  [vsyscall]

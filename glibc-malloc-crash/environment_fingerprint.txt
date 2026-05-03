@@ -1,0 +1,102 @@
+=== ENVIRONMENT FINGERPRINT ===
+
+--- System Identity ---
+Linux runsc 4.4.0 #1 SMP Sun Jan 10 15:06:54 PST 2016 x86_64 x86_64 x86_64 GNU/Linux
+PRETTY_NAME="Ubuntu 24.04.3 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.3 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+ldd (Ubuntu GLIBC 2.39-0ubuntu8.6) 2.39
+
+--- Hardware Resources ---
+16
+Mem:            13Gi       317Mi        12Gi          0B       127Mi        12Gi
+MemTotal:       13631488 kB
+MemAvailable:   13310264 kB
+SwapTotal:             0 kB
+Dirty:                 0 kB
+Mapped:           126700 kB
+
+--- Kernel Parameters (malloc-relevant) ---
+vm.max_map_count = 2147483647
+vm.overcommit_memory = 0
+kernel.pid_max = 65536
+
+--- glibc malloc Environment ---
+
+--- Process Limits ---
+real-time non-blocking time  (microseconds, -R) unlimited
+core file size              (blocks, -c) unlimited
+data seg size               (kbytes, -d) unlimited
+scheduling priority                 (-e) 0
+file size                   (blocks, -f) unlimited
+pending signals                     (-i) 0
+max locked memory           (kbytes, -l) 64
+max memory size             (kbytes, -m) unlimited
+open files                          (-n) 20000
+pipe size                (512 bytes, -p) 8
+POSIX message queues         (bytes, -q) 819200
+real-time priority                  (-r) 0
+stack size                  (kbytes, -s) 8192
+cpu time                   (seconds, -t) unlimited
+max user processes                  (-u) unlimited
+virtual memory              (kbytes, -v) unlimited
+file locks                          (-x) unlimited
+
+--- Container/Virtualization Detection ---
+7:pids:/container_01EmJhQKB6yA7dmoKq98o18B--claude_code_remote--angry-steel-young-ages
+6:memory:/container_01EmJhQKB6yA7dmoKq98o18B--claude_code_remote--angry-steel-young-ages
+5:job:/container_01EmJhQKB6yA7dmoKq98o18B--claude_code_remote--angry-steel-young-ages
+4:devices:/container_01EmJhQKB6yA7dmoKq98o18B--claude_code_remote--angry-steel-young-ages
+3:cpuset:/container_01EmJhQKB6yA7dmoKq98o18B--claude_code_remote--angry-steel-young-ages
+2:cpuacct:/container_01EmJhQKB6yA7dmoKq98o18B--claude_code_remote--angry-steel-young-ages
+1:cpu:/container_01EmJhQKB6yA7dmoKq98o18B--claude_code_remote--angry-steel-young-ages
+docker
+Docker: YES
+Kubernetes: NO
+
+--- Security/Sandbox Mechanisms ---
+CapEff:	00000000a82c35fb
+CapBnd:	00000000200404e1
+Seccomp:	0
+seccomp: status unknown
+1
+SELinux: not detected
+
+--- cgroup Constraints ---
+Memory cgroup:
+9223372036854775807
+7:pids:/container_01EmJhQKB6yA7dmoKq98o18B--claude_code_remote--angry-steel-young-ages
+6:memory:/container_01EmJhQKB6yA7dmoKq98o18B--claude_code_remote--angry-steel-young-ages/process_api/2533586e73c4cc2a7b602ca5d00fbd1a
+5:job:/container_01EmJhQKB6yA7dmoKq98o18B--claude_code_remote--angry-steel-young-ages
+4:devices:/container_01EmJhQKB6yA7dmoKq98o18B--claude_code_remote--angry-steel-young-ages
+3:cpuset:/container_01EmJhQKB6yA7dmoKq98o18B--claude_code_remote--angry-steel-young-ages
+2:cpuacct:/container_01EmJhQKB6yA7dmoKq98o18B--claude_code_remote--angry-steel-young-ages
+1:cpu:/container_01EmJhQKB6yA7dmoKq98o18B--claude_code_remote--angry-steel-young-ages
+
+--- Rust Toolchain ---
+rustc 1.91.1 (ed61e7d7e 2025-11-07)
+cargo 1.91.1 (ea2d97820 2025-10-10)
+/root/.cargo/bin/cargo
+
+--- Process Namespace Info ---
+total 0
+dr-x--x--x 2 root root 0 Nov 18 18:34 .
+dr-xr-xr-x 7 root root 0 Nov 18 18:34 ..
+lrwxrwxrwx 1 root root 0 Nov 18 18:34 ipc -> ipc:[2]
+lrwxrwxrwx 1 root root 0 Nov 18 18:34 mnt -> mnt:[5]
+lrwxrwxrwx 1 root root 0 Nov 18 18:34 net -> net:[1]
+lrwxrwxrwx 1 root root 0 Nov 18 18:34 pid -> pid:[4]
+lrwxrwxrwx 1 root root 0 Nov 18 18:34 user -> user:[13573]
+lrwxrwxrwx 1 root root 0 Nov 18 18:34 uts -> uts:[3]
+
+=== END FINGERPRINT ===
