@@ -270,6 +270,28 @@
     view.r = Math.min(cssW, cssH) * 0.42;
   }
 
+  // Stratigraphic-record canvas — the cross-section autobiography. Sized
+  // independently of the planet (full-width, fixed-height strip).
+  const strataCanvas = $('strata');
+  const sctx = strataCanvas ? strataCanvas.getContext('2d') : null;
+  const sview = { w: 0, h: 0, dpr: 1 };
+  let strataSig = '';   // cheap dirty key — strata only redraws on change
+
+  function sizeStrata() {
+    if (!strataCanvas || !sctx) return;
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const rect = strataCanvas.getBoundingClientRect();
+    const cssW = Math.max(200, rect.width);
+    const cssH = Math.max(120, rect.height);
+    strataCanvas.width = Math.round(cssW * dpr);
+    strataCanvas.height = Math.round(cssH * dpr);
+    sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    sview.dpr = dpr;
+    sview.w = cssW;
+    sview.h = cssH;
+    strataSig = '';   // force a redraw at the new size
+  }
+
   const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 
   function romanEpoch(n) {
@@ -867,17 +889,36 @@
     return h;
   }
 
-  // Elevation → RGB palette. Biomes are ordered so continents sit above
-  // sea level and peaks cap out in pale rock.
+  // Elevation → RGB palette. Tuned to read like an 1880s lithographic
+  // geological chart: vivid, flat, saturated rock bands rather than a
+  // naturalistic satellite view. The pink/magenta highland band is the
+  // direct nod to the reference plate's signature rock colour.
   function heightToColor(h) {
-    if (h < 0.40) return [22, 42, 78];     // deep ocean
-    if (h < 0.47) return [38, 72, 112];    // shelf
-    if (h < 0.50) return [72, 110, 138];   // shallows
-    if (h < 0.53) return [148, 134, 94];   // beach
-    if (h < 0.62) return [82, 112, 70];    // plains
-    if (h < 0.72) return [100, 110, 60];   // hills
-    if (h < 0.82) return [126, 100, 76];   // mountain flank
-    return [205, 196, 178];                // peaks
+    if (h < 0.40) return [38, 66, 92];     // deep ocean — slate indigo
+    if (h < 0.47) return [54, 96, 118];    // shelf
+    if (h < 0.50) return [86, 140, 150];   // shallows — teal
+    if (h < 0.53) return [206, 178, 110];  // beach — ochre
+    if (h < 0.62) return [120, 150, 64];   // lowland — sap green
+    if (h < 0.70) return [156, 158, 60];   // hills — olive gold
+    if (h < 0.78) return [192, 104, 66];   // highland — brick orange
+    if (h < 0.86) return [214, 118, 146];  // upland rock — lithograph pink
+    return [238, 228, 205];                // peaks — pale cap
+  }
+
+  // Representative rock colour for an epoch's strata band. Takes a
+  // mid-upland base colour and pushes it through the same epoch tint math
+  // bakeTerrain uses, so a band reads as "the same world, that era's
+  // mood" — exactly how the planet itself shifts across the arc.
+  function epochBandColor(n) {
+    const [tr, tg, tb, tw] = epochInfo(n).tint;
+    const [br, bg, bb] = [168, 150, 96];   // warm upland reference rock
+    const k = 0.96;                        // flat, print-like
+    const inv = 1 - tw;
+    return [
+      Math.min(255, br * k * tr * inv + 255 * tw),
+      Math.min(255, bg * k * tg * inv + 255 * tw),
+      Math.min(255, bb * k * tb * inv + 255 * tw),
+    ];
   }
 
   // Offscreen canvas holding the planet's surface. Baked once (per seed),
@@ -944,12 +985,16 @@
           }
         }
 
-        // Directional lighting: top-left lit, bottom-right shaded.
+        // Directional lighting: top-left lit, bottom-right shaded. Range
+        // is deliberately compressed — a lithographic chart is printed in
+        // flat, saturated ink, not soft-rendered relief. Just enough
+        // gradient to read as a sphere, not a 3D render.
         const light = 0.55 - nx * 0.32 - ny * 0.42;
-        const shade = Math.max(0.42, Math.min(1.08, 0.78 + light * 0.55));
+        const shade = Math.max(0.80, Math.min(1.07, 0.92 + light * 0.22));
 
-        // Limb darkening: subtle falloff near the circumference adds sphericality.
-        const limb = 1 - 0.28 * d2;
+        // Limb darkening: gentle falloff near the circumference adds
+        // sphericality without muddying the printed bands.
+        const limb = 1 - 0.12 * d2;
 
         const [r, g, b] = heightToColor(mh);
         const k = shade * limb;
@@ -1346,165 +1391,86 @@
   //
   // Same per-event 'breath' as drawStressedFault keeps low-maturity
   // plumes from reading as static.
+  // Deterministic per-event splayed-vein magma figure. The reference
+  // chart's signature is opaque near-black dendritic magma threading up
+  // through the strata; plumes render as exactly that — a vent with
+  // branching ink channels that grow in reach and number with maturity,
+  // gaining a hot core only as eruption nears. Geometry is seeded purely
+  // from the event's fixed position so the figure is stable frame to
+  // frame (no flicker); only alpha/core "breathe".
+  function drawMagmaVein(x, y, ang, len, width, depth, rng) {
+    if (depth <= 0 || len < 3) return;
+    // Slight wander so channels look fractured, not ruled.
+    const a = ang + (rng() - 0.5) * 0.5;
+    const ex = x + Math.cos(a) * len;
+    const ey = y + Math.sin(a) * len;
+    ctx.lineWidth = Math.max(0.8, width);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    // Gentle bow via a control point offset perpendicular to the run.
+    const mx = (x + ex) / 2 + Math.cos(a + Math.PI / 2) * len * 0.18 * (rng() - 0.5);
+    const my = (y + ey) / 2 + Math.sin(a + Math.PI / 2) * len * 0.18 * (rng() - 0.5);
+    ctx.quadraticCurveTo(mx, my, ex, ey);
+    ctx.stroke();
+    // Branch: one main continuation plus an occasional offshoot.
+    drawMagmaVein(ex, ey, a, len * 0.74, width * 0.7, depth - 1, rng);
+    if (rng() > 0.35) {
+      const side = rng() > 0.5 ? 1 : -1;
+      drawMagmaVein(ex, ey, a + side * (0.5 + rng() * 0.5),
+                    len * 0.6, width * 0.6, depth - 1, rng);
+    }
+  }
+
   function drawBuildingPlume(event) {
     const { cx, cy, r } = view;
     const px = cx + event.x * r;
     const py = cy + event.y * r;
-    const stage = plumeStage(eventMaturity(event));
+    const m = eventMaturity(event);
+    const stage = plumeStage(m);
     const breathPhase = event.x * 7 + event.y * 5;
     const breath = 0.85 + 0.15 * Math.sin(performance.now() / 480 + breathPhase);
 
     ctx.save();
 
-    switch (stage) {
-      case 'bulge': {
-        // Faint swelling — a dim filled circle, just a hint that something's
-        // cooking under the surface.
-        const radius = 6 * breath;
-        ctx.fillStyle = `rgba(80, 50, 30, ${0.45 * breath})`;
-        ctx.beginPath();
-        ctx.arc(px, py, radius, 0, Math.PI * 2);
-        ctx.fill();
-        break;
-      }
-      case 'dome': {
-        // Clearer dome with a dark rim and a subtle top highlight to
-        // suggest 3D — the swelling is now legible as volume.
-        const radius = 10;
-        // Outer rim shadow.
-        ctx.fillStyle = 'rgba(40, 22, 12, 0.55)';
-        ctx.beginPath();
-        ctx.arc(px, py + 1, radius + 1, 0, Math.PI * 2);
-        ctx.fill();
-        // Body of the dome.
-        ctx.fillStyle = `rgba(120, 70, 35, ${0.7 * breath})`;
-        ctx.beginPath();
-        ctx.arc(px, py, radius, 0, Math.PI * 2);
-        ctx.fill();
-        // Lit highlight near the top — short arc.
-        ctx.strokeStyle = 'rgba(220, 175, 130, 0.55)';
-        ctx.lineWidth = 1.4;
-        ctx.beginPath();
-        ctx.arc(px, py - 1, radius * 0.65, Math.PI * 1.15, Math.PI * 1.85);
-        ctx.stroke();
-        break;
-      }
-      case 'smoking': {
-        // Dome plus 2-3 wisps of color rising upward — the vent is
-        // exhaling.
-        const radius = 13;
-        // Base shadow.
-        ctx.fillStyle = 'rgba(40, 22, 12, 0.6)';
-        ctx.beginPath();
-        ctx.arc(px, py + 1.5, radius + 1.5, 0, Math.PI * 2);
-        ctx.fill();
-        // Dome body.
-        ctx.fillStyle = `rgba(140, 80, 40, ${0.8 * breath})`;
-        ctx.beginPath();
-        ctx.arc(px, py, radius, 0, Math.PI * 2);
-        ctx.fill();
-        // Top highlight.
-        ctx.strokeStyle = 'rgba(230, 185, 140, 0.6)';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(px, py - 1, radius * 0.6, Math.PI * 1.15, Math.PI * 1.85);
-        ctx.stroke();
-        // Three wisps drifting up. Slight time-driven sway so they feel
-        // alive without being distracting.
-        const sway = Math.sin(performance.now() / 600 + breathPhase) * 1.5;
-        ctx.strokeStyle = 'rgba(180, 130, 90, 0.5)';
-        ctx.lineWidth = 1.6;
-        ctx.lineCap = 'round';
-        for (let i = -1; i <= 1; i++) {
-          const wx = px + i * 4;
-          const wy0 = py - radius;
-          const wy1 = wy0 - 8;
-          const wy2 = wy1 - 6;
-          ctx.beginPath();
-          ctx.moveTo(wx, wy0);
-          ctx.quadraticCurveTo(wx + sway * (i === 0 ? 1 : i), wy1, wx + sway * 0.5, wy2);
-          ctx.stroke();
-        }
-        break;
-      }
-      case 'fissured': {
-        // Cracks visible across the dome surface; a hot core glow at
-        // the center signals magma close to the top.
-        const radius = 16;
-        // Base shadow.
-        ctx.fillStyle = 'rgba(40, 22, 12, 0.65)';
-        ctx.beginPath();
-        ctx.arc(px, py + 2, radius + 2, 0, Math.PI * 2);
-        ctx.fill();
-        // Dome body — slightly warmer hue now.
-        ctx.fillStyle = 'rgba(155, 80, 40, 0.85)';
-        ctx.beginPath();
-        ctx.arc(px, py, radius, 0, Math.PI * 2);
-        ctx.fill();
-        // Hot core glow — radial gradient at the center.
-        const glow = ctx.createRadialGradient(px, py, 0, px, py, radius * 0.6);
-        glow.addColorStop(0, 'rgba(255, 180, 90, 0.85)');
-        glow.addColorStop(1, 'rgba(255, 130, 50, 0)');
-        ctx.fillStyle = glow;
-        ctx.beginPath();
-        ctx.arc(px, py, radius * 0.6, 0, Math.PI * 2);
-        ctx.fill();
-        // Radial cracks — short dark strokes from center outward.
-        ctx.strokeStyle = 'rgba(20, 10, 5, 0.85)';
-        ctx.lineWidth = 1.2;
-        ctx.lineCap = 'round';
-        const crackSeed = breathPhase;
-        for (let i = 0; i < 5; i++) {
-          const a = crackSeed + i * (Math.PI * 2 / 5);
-          const r0 = radius * 0.15;
-          const r1 = radius * 0.95;
-          ctx.beginPath();
-          ctx.moveTo(px + Math.cos(a) * r0, py + Math.sin(a) * r0);
-          ctx.lineTo(px + Math.cos(a) * r1, py + Math.sin(a) * r1);
-          ctx.stroke();
-        }
-        break;
-      }
-      case 'erupting': {
-        // Hot orange-red, bright pulsing center, strong outer halo —
-        // the dome is about to crack open. Sin-based color lerp matches
-        // the 'aboutToRupture' fault stage tempo so the urgency cue
-        // feels consistent across kinds.
-        const radius = 18;
-        const t = (Math.sin(performance.now() / 220) + 1) * 0.5;
-        // Outer halo — wide and warm.
-        const halo = ctx.createRadialGradient(px, py, radius * 0.5, px, py, radius * 2.2);
-        halo.addColorStop(0, `rgba(255, 140, 70, ${0.55 + 0.2 * t})`);
-        halo.addColorStop(1, 'rgba(255, 80, 30, 0)');
-        ctx.fillStyle = halo;
-        ctx.beginPath();
-        ctx.arc(px, py, radius * 2.2, 0, Math.PI * 2);
-        ctx.fill();
-        // Dark base.
-        ctx.fillStyle = 'rgba(40, 18, 10, 0.7)';
-        ctx.beginPath();
-        ctx.arc(px, py + 2, radius + 2, 0, Math.PI * 2);
-        ctx.fill();
-        // Glowing dome body.
-        const rC = Math.round(220 + (255 - 220) * t);
-        const gC = Math.round(100 + (140 - 100) * t);
-        const bC = Math.round(50 + (70 - 50) * t);
-        ctx.fillStyle = `rgba(${rC}, ${gC}, ${bC}, 0.95)`;
-        ctx.beginPath();
-        ctx.arc(px, py, radius, 0, Math.PI * 2);
-        ctx.fill();
-        // Bright hot center.
-        const core = ctx.createRadialGradient(px, py, 0, px, py, radius * 0.7);
-        core.addColorStop(0, `rgba(255, 245, 200, ${0.9 + 0.1 * t})`);
-        core.addColorStop(1, 'rgba(255, 160, 60, 0)');
-        ctx.fillStyle = core;
-        ctx.beginPath();
-        ctx.arc(px, py, radius * 0.7, 0, Math.PI * 2);
-        ctx.fill();
-        break;
-      }
+    // --- Dendritic magma channels (all stages) ---------------------------
+    // Seed a tiny LCG from the event's fixed position so the vein figure
+    // is identical every frame.
+    let seed = ((event.x * 10000) | 0) ^ ((event.y * 26861) | 0) ^ 0x9e37;
+    const rng = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
+      return ((seed >>> 0) / 4294967296);
+    };
+    const veinCount = 3 + Math.round(m * 3);          // 3 → 6 primary channels
+    const depth = 2 + Math.round(m * 2);              // 2 → 4 branch levels
+    const reach = (10 + m * 26) * (0.92 + 0.08 * breath);
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = `rgba(20, 14, 9, ${0.78 + 0.17 * m})`;
+    for (let i = 0; i < veinCount; i++) {
+      const base = (i / veinCount) * Math.PI * 2 + rng() * 0.8;
+      drawMagmaVein(px, py, base, reach, 2.4 + m * 1.6, depth, rng);
     }
 
+    // Hot ink-orange core leaks in only as the vent ripens — fissured and
+    // erupting. Kept small and saturated so the figure stays ink-on-paper.
+    if (m >= 0.62) {
+      const hot = (m - 0.62) / 0.38;
+      const coreR = (4 + hot * 7) * (0.85 + 0.15 * breath);
+      const t = stage === 'erupting'
+        ? (Math.sin(performance.now() / 220) + 1) * 0.5
+        : 0.4;
+      const glow = ctx.createRadialGradient(px, py, 0, px, py, coreR * 2.4);
+      glow.addColorStop(0, `rgba(255, 196, 96, ${(0.55 + 0.35 * t) * hot})`);
+      glow.addColorStop(0.5, `rgba(214, 96, 40, ${0.45 * hot})`);
+      glow.addColorStop(1, 'rgba(214, 96, 40, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(px, py, coreR * 2.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = `rgba(255, 230, 170, ${(0.7 + 0.3 * t) * hot})`;
+      ctx.beginPath();
+      ctx.arc(px, py, coreR * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
   }
 
@@ -1683,13 +1649,20 @@
 
   function drawPlanet() {
     const { w, h, cx, cy, r } = view;
+    // Transparent clear so the CSS faded-cyan "sky" of the plate shows
+    // through around the disc.
     ctx.clearRect(0, 0, w, h);
 
-    const bgGrad = ctx.createRadialGradient(cx, cy, r * 0.2, cx, cy, r * 2.2);
-    bgGrad.addColorStop(0, 'rgba(40,50,70,0.15)');
-    bgGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, w, h);
+    // Soft atmospheric halo hugging the silhouette — a thin printed
+    // aura, like the hand-tinted rim on the reference chart.
+    const halo = ctx.createRadialGradient(cx, cy, r * 0.92, cx, cy, r * 1.16);
+    halo.addColorStop(0, 'rgba(247, 240, 222, 0)');
+    halo.addColorStop(0.55, 'rgba(247, 240, 222, 0.34)');
+    halo.addColorStop(1, 'rgba(247, 240, 222, 0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 1.16, 0, Math.PI * 2);
+    ctx.fill();
 
     // Terrain: baked offscreen noise blitted into the disc. Clipping keeps
     // the square source image from bleeding outside the sphere silhouette.
@@ -1713,12 +1686,18 @@
     drawEvents();
     ctx.restore();
 
-    // Subtle epoch rim — keeps the silhouette legible against the background.
+    // Engraved plate ring — a double ink stroke around the silhouette,
+    // the way an old lithograph frames its subject.
     ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(43, 36, 23, 0.55)';
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(43, 36, 23, 0.25)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 3.5, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
 
@@ -1929,8 +1908,204 @@
     updateHint();
   }
 
+  // The stratigraphic record — the planet's autobiography drawn as a
+  // cross-section of stacked, dated rock bands (oldest at the base, like
+  // a real outcrop and like the reference chart). Every scar, feature and
+  // orogeny is filed into the band of the epoch that produced it, so the
+  // column literally is "all change is permanent" (Law II) made visible.
+  // Reads only existing state — no model or persistence changes.
+  function strataSignature() {
+    let modSig = 0;
+    for (const m of state.terrainMods) modSig = (modSig + (m.bornInEpoch | 0)) | 0;
+    return [
+      state.epoch, state.scars.length, state.features.length,
+      state.terrainMods.length, modSig,
+      Math.round(sview.w), Math.round(sview.h),
+    ].join(':');
+  }
+
+  // Tiny deterministic [0,1) from an integer — stable scatter so marks
+  // don't jump between redraws.
+  function strataRand(i) {
+    let h = Math.imul(i + 1, 2246822519) ^ 0x9e3779b9;
+    h = Math.imul(h ^ (h >>> 15), 2654435761);
+    return ((h ^ (h >>> 13)) >>> 0) / 4294967296;
+  }
+
+  function drawStrata() {
+    if (!sctx) return;
+    const sig = strataSignature();
+    if (sig === strataSig) return;   // nothing changed — skip the redraw
+    strataSig = sig;
+
+    const W = sview.w, H = sview.h;
+    const INK = 'rgba(43, 36, 23, 1)';
+    sctx.clearRect(0, 0, W, H);
+
+    // Aged-paper bed + engraved frame.
+    sctx.fillStyle = '#efe7cf';
+    sctx.fillRect(0, 0, W, H);
+    sctx.strokeStyle = INK;
+    sctx.lineWidth = 1;
+    sctx.strokeRect(1, 1, W - 2, H - 2);
+
+    const padX = 10, padTop = 8, padBot = 16;
+    const gutter = Math.min(150, Math.max(96, W * 0.30));  // right label column
+    const colX = padX;
+    const colW = W - padX - gutter;
+    const colY = padTop;
+    const colH = H - padTop - padBot;
+    if (colW < 40 || colH < 20) return;
+
+    const n = clamp(state.epoch, 1, MAX_EPOCH);
+    const bandH = colH / n;
+
+    const serif = '"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif';
+
+    // File accumulated geology by birth epoch.
+    const byEpoch = (epochOf) => {
+      const e = clamp((epochOf | 0) || 1, 1, n);
+      return e;
+    };
+    const scarsIn = new Array(n + 1).fill(0);
+    const featsIn = new Array(n + 1).fill(0);
+    const modsIn = new Array(n + 1).fill(0);
+    for (const s of state.scars) scarsIn[byEpoch(s.bornInEpoch)]++;
+    for (const f of state.features) featsIn[byEpoch(f.bornInEpoch)]++;
+    for (const m of state.terrainMods) modsIn[byEpoch(m.bornInEpoch)]++;
+
+    // Bands: epoch 1 at the bottom, current epoch on top.
+    for (let e = 1; e <= n; e++) {
+      const top = colY + (n - e) * bandH;
+      const [r, g, b] = epochBandColor(e);
+      sctx.fillStyle = `rgb(${r | 0}, ${g | 0}, ${b | 0})`;
+      sctx.fillRect(colX, top, colW, bandH);
+
+      // Bedding planes — a few faint horizontal striations per band give
+      // the printed-rock texture without any image asset.
+      sctx.strokeStyle = 'rgba(43, 36, 23, 0.10)';
+      sctx.lineWidth = 1;
+      for (let k = 1; k <= 3; k++) {
+        const ly = top + (bandH * k) / 4 + (strataRand(e * 7 + k) - 0.5) * 2;
+        sctx.beginPath();
+        sctx.moveTo(colX, ly);
+        sctx.lineTo(colX + colW, ly);
+        sctx.stroke();
+      }
+
+      // The current epoch is still being deposited — mark it with a
+      // diagonal hatch so "in progress" reads at a glance.
+      if (e === state.epoch) {
+        sctx.save();
+        sctx.beginPath();
+        sctx.rect(colX, top, colW, bandH);
+        sctx.clip();
+        sctx.strokeStyle = 'rgba(247, 240, 222, 0.35)';
+        sctx.lineWidth = 1;
+        for (let hx = -bandH; hx < colW; hx += 9) {
+          sctx.beginPath();
+          sctx.moveTo(colX + hx, top + bandH);
+          sctx.lineTo(colX + hx + bandH, top);
+          sctx.stroke();
+        }
+        sctx.restore();
+      }
+
+      // Ink rule between strata.
+      sctx.strokeStyle = 'rgba(43, 36, 23, 0.55)';
+      sctx.lineWidth = 1;
+      sctx.beginPath();
+      sctx.moveTo(colX, top);
+      sctx.lineTo(colX + colW, top);
+      sctx.stroke();
+
+      // --- Accumulated geology, filed into its birth band -------------
+      const midY = top + bandH * 0.5;
+      const drawMarks = (count, cap, drawer, slot) => {
+        const shown = Math.min(count, cap);
+        for (let j = 0; j < shown; j++) {
+          const rr = strataRand(e * 131 + slot * 17 + j);
+          const mx = colX + 10 + rr * (colW - 20);
+          const my = midY + (strataRand(e * 53 + slot + j) - 0.5) * bandH * 0.5;
+          drawer(mx, my);
+        }
+        return count - shown;
+      };
+
+      // Scars — short slanted ink fault ticks (damage, Law II memory).
+      const scarOver = drawMarks(scarsIn[e], 16, (mx, my) => {
+        sctx.strokeStyle = 'rgba(28, 20, 12, 0.8)';
+        sctx.lineWidth = 1.4;
+        sctx.beginPath();
+        sctx.moveTo(mx - 3, my + 4);
+        sctx.lineTo(mx + 3, my - 4);
+        sctx.stroke();
+      }, 1);
+
+      // Features — small pale ridge carets (handled events → terrain).
+      const featOver = drawMarks(featsIn[e], 14, (mx, my) => {
+        sctx.strokeStyle = 'rgba(245, 235, 210, 0.92)';
+        sctx.lineWidth = 1.6;
+        sctx.lineCap = 'round';
+        sctx.beginPath();
+        sctx.moveTo(mx - 4, my + 3);
+        sctx.lineTo(mx, my - 4);
+        sctx.lineTo(mx + 4, my + 3);
+        sctx.stroke();
+      }, 2);
+
+      // Orogenies — folded chevrons, the largest geological events.
+      drawMarks(modsIn[e], 8, (mx, my) => {
+        sctx.strokeStyle = 'rgba(70, 40, 22, 0.9)';
+        sctx.lineWidth = 2;
+        sctx.beginPath();
+        sctx.moveTo(mx - 6, my + 4);
+        sctx.lineTo(mx - 2, my - 4);
+        sctx.lineTo(mx + 2, my + 4);
+        sctx.lineTo(mx + 6, my - 4);
+        sctx.stroke();
+      }, 3);
+
+      const overflow = Math.max(scarOver, 0) + Math.max(featOver, 0);
+      if (overflow > 0) {
+        sctx.fillStyle = 'rgba(43, 36, 23, 0.7)';
+        sctx.font = `italic 10px ${serif}`;
+        sctx.textAlign = 'right';
+        sctx.textBaseline = 'middle';
+        sctx.fillText(`+${overflow}`, colX + colW - 5, midY);
+      }
+
+      // --- Right-hand running label (roman · name) -------------------
+      const ly = top + bandH * 0.5;
+      sctx.strokeStyle = 'rgba(43, 36, 23, 0.35)';
+      sctx.lineWidth = 1;
+      sctx.beginPath();
+      sctx.moveTo(colX + colW, ly);
+      sctx.lineTo(W - gutter + 8, ly);
+      sctx.stroke();
+
+      const labelSize = clamp(Math.round(bandH * 0.42), 9, 14);
+      sctx.fillStyle = INK;
+      sctx.textAlign = 'left';
+      sctx.textBaseline = 'middle';
+      sctx.font = `700 ${labelSize}px ${serif}`;
+      sctx.fillText(romanEpoch(e), W - gutter + 12, ly - labelSize * 0.55);
+      sctx.font = `${labelSize}px ${serif}`;
+      sctx.fillText(epochInfo(e).name, W - gutter + 12, ly + labelSize * 0.62);
+    }
+
+    // Depth cue — youngest at the top, oldest at the base.
+    sctx.fillStyle = 'rgba(43, 36, 23, 0.55)';
+    sctx.font = `italic 10px ${serif}`;
+    sctx.textAlign = 'left';
+    sctx.textBaseline = 'alphabetic';
+    sctx.fillText('recent', colX + 2, colY + 11);
+    sctx.fillText('oldest', colX + 2, colY + colH - 4);
+  }
+
   function frame() {
     drawPlanet();
+    drawStrata();
     renderHUD();
     requestAnimationFrame(frame);
   }
@@ -2042,9 +2217,11 @@
     }
   });
 
-  const ro = new ResizeObserver(sizeCanvas);
+  function onResize() { sizeCanvas(); sizeStrata(); }
+  const ro = new ResizeObserver(onResize);
   ro.observe(canvas);
-  window.addEventListener('orientationchange', () => setTimeout(sizeCanvas, 100));
+  if (strataCanvas) ro.observe(strataCanvas);
+  window.addEventListener('orientationchange', () => setTimeout(onResize, 100));
 
   // Law I — time always passes. setInterval alone gets throttled (or halted)
   // in backgrounded tabs, so we drive simulation from real wall-clock deltas
@@ -2072,6 +2249,7 @@
   renderLog();
 
   sizeCanvas();
+  sizeStrata();
   bakeTerrain();
   setInterval(driveLoop, TICK_MS);
   setInterval(persistState, SAVE_INTERVAL_MS);

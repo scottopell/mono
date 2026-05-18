@@ -10,7 +10,7 @@
 <body>
   <main>
     <header>
-      <h1>Planet</h1>
+      <h1>Geological Chart</h1>
       <p class="tagline">You are the planet. Stresses build on your crust — release them when they ripen, ignore them and they scar.</p>
     </header>
 
@@ -19,6 +19,11 @@
     </section>
 
     <p id="tap-hint" class="tap-hint" aria-live="polite">gathering will… 0%</p>
+
+    <section class="strata-panel" aria-label="Stratigraphic record of accumulated geology">
+      <p class="strata-title">Stratigraphic Record</p>
+      <canvas id="strata" aria-label="accumulated rock strata, oldest at the base"></canvas>
+    </section>
 
     <section class="hud">
       <div class="gauge">
@@ -47,6 +52,9 @@
     </details>
 
     <footer>
+      <p class="cloud-legend" aria-hidden="true">
+        <span>Cirrus</span><span>Cumulus</span><span>Stratus</span><span>Nimbus</span>
+      </p>
       <details class="help-details">
         <summary>How it works</summary>
         <div class="help-grid">
