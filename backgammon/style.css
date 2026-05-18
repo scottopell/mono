@@ -269,10 +269,17 @@ html, body {
   font-weight: 700;
   font-size: 1.3rem;
   box-shadow: 0 2px 0 rgba(0,0,0,0.3);
+  cursor: pointer;
+  border: 2px solid transparent;
 }
 .die.used {
   opacity: 0.35;
   background: var(--ink-dim);
+  cursor: default;
+}
+.die.playable {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent), 0 2px 0 rgba(0,0,0,0.3);
 }
 .die.rolling {
   animation: shake 0.35s ease-out;

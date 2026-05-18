@@ -176,7 +176,7 @@
       });
       conn.on('data', (msg) => {
         if (msg && msg.type === 'state') {
-          onState && onState(msg.state);
+          onState && onState(msg.state, msg.selection || null);
         }
       });
       conn.on('close', () => {

@@ -1,5 +1,14 @@
 // UI wiring: lobby → waiting → playing.
 // Owns all DOM interaction and connects peer + rules + board.
+//
+// v2 model: the two phones form ONE board. Host renders the LEFT half,
+// guest the RIGHT half, local hotseat the full board. There is no
+// per-player perspective flip. The host owns authoritative game state AND
+// the current selection; both are broadcast. Every tap on either device is
+// forwarded to the host as a raw intent (tap / tapDie / roll); the host
+// attributes it to the current turn (trust model). Moves are committed by
+// tap-source-then-tap-die: source + die deterministically picks the
+// destination, so no cross-phone destination tapping is needed.
 (() => {
   'use strict';
 
@@ -9,10 +18,10 @@
 
   const app = {
     role: null,           // 'host' | 'guest' | 'local'
-    perspective: null,    // 'p1' | 'p2' — in local mode, follows state.turn
+    side: null,           // 'left' (host) | 'right' (guest) | 'both' (local)
     state: null,
+    selection: null,      // { source: idx|'bar' } | null  (host-authoritative)
     peerApi: null,
-    selected: null,       // current move-source ('bar', 0..23, or null)
     lastRollSeq: 0,
     status: 'idle',
   };
@@ -72,7 +81,7 @@
 
   function startHost() {
     app.role = 'host';
-    app.perspective = 'p1';
+    app.side = 'left';
     setStatus('connecting');
 
     app.peerApi = peer.createHost({
@@ -85,14 +94,10 @@
         }
       },
       onGuestJoined: () => {
-        // Initialize game state and broadcast
-        const s = rules.initialState();
-        setState(s, { broadcast: true });
+        setState(rules.initialState(), null, { broadcast: true });
         enterGame();
       },
-      onIntent: (msg) => {
-        applyIntentOnHost(msg);
-      },
+      onIntent: (msg) => applyIntentOnHost(msg),
       onError: (err) => {
         console.error('[host] error:', err);
         el.lobbyError.textContent = 'Could not start room. Try again.';
@@ -123,8 +128,6 @@
     const url = buildInviteURL(code);
     el.btnShare.dataset.url = url;
     el.btnShare.classList.remove('hidden');
-    // navigator.share opens the native share sheet on iOS/Android (iMessage,
-    // WhatsApp, etc.) — much nicer than copying. Fall back to clipboard.
     if (navigator.share) {
       el.btnShare.textContent = 'Share invite link';
       el.shareLinkHint.classList.add('hidden');
@@ -141,9 +144,7 @@
     if (navigator.share) {
       try {
         await navigator.share({ title: 'Backgammon', text: 'Join my game', url });
-      } catch (_) {
-        // User cancelled; nothing to do.
-      }
+      } catch (_) { /* user cancelled */ }
       return;
     }
     try {
@@ -151,20 +152,17 @@
       const orig = el.btnShare.textContent;
       el.btnShare.textContent = 'Copied!';
       setTimeout(() => { el.btnShare.textContent = orig; }, 1500);
-    } catch (_) {
-      // Clipboard API unavailable; the link is already shown below the button.
-    }
+    } catch (_) { /* link is shown below the button as fallback */ }
   });
 
-  // --- Lobby: local hotseat (solo playtest, no peer) ---
+  // --- Lobby: local hotseat (full board on one device, solo playtest) ---
 
   el.btnLocal.addEventListener('click', () => {
     el.lobbyError.textContent = '';
     app.role = 'local';
-    app.perspective = 'p1';
+    app.side = 'both';
     setStatus('idle');
-    const s = rules.initialState();
-    setState(s, { broadcast: false });
+    setState(rules.initialState(), null, { broadcast: false });
     enterGame();
   });
 
@@ -183,16 +181,18 @@
 
   function startGuest(code) {
     app.role = 'guest';
-    app.perspective = 'p2';
+    app.side = 'right';
     setStatus('connecting');
 
     app.peerApi = peer.joinAsGuest(code, {
       onStatus: setStatus,
-      onState: (state) => {
-        setState(state, { broadcast: false });
-        if (app.role === 'guest' && el.screenGame.classList.contains('hidden')) {
-          enterGame();
-        }
+      onState: (state, selection) => {
+        app.state = state;
+        app.selection = selection || null;
+        mirrorToDom();
+        renderUi();
+        render();
+        if (el.screenGame.classList.contains('hidden')) enterGame();
       },
       onError: (err) => {
         console.error('[guest] error:', err);
@@ -209,36 +209,34 @@
     });
   }
 
-  // --- Enter game screen ---
-
   function enterGame() {
+    el.youLabel.textContent = app.side === 'left'
+      ? 'This phone — left half (P1 tray)'
+      : app.side === 'right'
+        ? 'This phone — right half (P2 tray)'
+        : 'Hotseat — full board';
     showScreen('game');
-    // Defer so the browser has laid out the newly-visible canvas before we measure.
     requestAnimationFrame(resizeAndRender);
   }
 
   // --- State management ---
 
-  function setState(s, { broadcast }) {
+  function setState(s, selection, { broadcast }) {
     app.state = s;
-    app.selected = null;
-    // In local hotseat, the device always shows the active player's perspective.
-    if (app.role === 'local' && s && s.phase !== 'gameover') {
-      app.perspective = s.turn;
-    }
+    app.selection = selection || null;
     if (broadcast && app.role === 'host' && app.peerApi) {
-      app.peerApi.send({ type: 'state', state: serializeState(s) });
+      app.peerApi.send({
+        type: 'state',
+        state: serializeState(s),
+        selection: app.selection,
+      });
     }
-    // Mirror state to DOM for external debuggers that run in isolated worlds.
-    document.body.dataset.bgState = JSON.stringify(serializeState(s));
-    document.body.dataset.bgPerspective = app.perspective;
-    document.body.dataset.bgSelected = app.selected === null ? '' : String(app.selected);
+    mirrorToDom();
     renderUi();
     render();
   }
 
   function serializeState(s) {
-    // Ensures clean JSON round-trip (no Int8Array or exotic types)
     return {
       board: Array.from(s.board),
       bar: { p1: s.bar.p1, p2: s.bar.p2 },
@@ -252,9 +250,18 @@
     };
   }
 
-  // --- Intents (REQ-BG-012) ---
+  function mirrorToDom() {
+    if (!app.state) return;
+    document.body.dataset.bgState = JSON.stringify(serializeState(app.state));
+    document.body.dataset.bgSide = app.side || '';
+    document.body.dataset.bgSelected =
+      app.selection && app.selection.source !== undefined && app.selection.source !== null
+        ? String(app.selection.source) : '';
+  }
 
-  function sendIntent(intent) {
+  // --- Intents (host-authoritative) ---
+
+  function forwardIntent(intent) {
     if (app.role === 'host' || app.role === 'local') {
       applyIntentOnHost({ type: 'intent', ...intent });
     } else if (app.peerApi) {
@@ -265,204 +272,167 @@
   function applyIntentOnHost(msg) {
     if (!app.state) return;
     try {
-      let s;
       if (msg.intent === 'roll') {
         if (app.state.phase !== 'roll') return;
-        s = rules.rollDice(app.state);
-      } else if (msg.intent === 'move') {
-        s = rules.applyMove(app.state, {
-          from: msg.from, to: msg.to, die: msg.die,
-        });
-      } else if (msg.intent === 'endTurn') {
-        if (app.state.phase !== 'move') return;
-        s = rules.endTurn(app.state);
+        setState(rules.rollDice(app.state), null, { broadcast: true });
+      } else if (msg.intent === 'tap') {
+        applyTap(msg.loc);
+      } else if (msg.intent === 'tapDie') {
+        applyTapDie(msg.value);
       } else if (msg.intent === 'newGame') {
-        s = rules.initialState();
-      } else {
-        return;
+        setState(rules.initialState(), null, { broadcast: true });
       }
-      setState(s, { broadcast: true });
     } catch (e) {
       console.warn('[host] intent rejected:', e.message);
-      // Re-broadcast current state so guest resyncs
       if (app.peerApi) {
-        app.peerApi.send({ type: 'state', state: serializeState(app.state) });
+        app.peerApi.send({
+          type: 'state',
+          state: serializeState(app.state),
+          selection: app.selection,
+        });
       }
     }
+  }
+
+  // Tapping a location only ever (re)selects a source. 'off' (tray) is a
+  // no-op so an accidental tray tap doesn't drop the current selection.
+  function applyTap(loc) {
+    if (app.state.phase !== 'move') return;
+    if (loc === 'off') return;
+    const player = app.state.turn;
+
+    if (loc === null || loc === undefined) {
+      setState(app.state, null, { broadcast: true });
+      return;
+    }
+
+    if (loc === 'bar') {
+      const ok = app.state.bar[player] > 0 &&
+        rules.legalMovesFrom(app.state, 'bar').length > 0;
+      setState(app.state, ok ? { source: 'bar' } : null, { broadcast: true });
+      return;
+    }
+
+    if (typeof loc === 'number') {
+      // Bar checkers must be entered before anything else can be selected.
+      if (app.state.bar[player] > 0) {
+        setState(app.state, null, { broadcast: true });
+        return;
+      }
+      const sign = player === 'p1' ? 1 : -1;
+      const ok = sign * app.state.board[loc] > 0 &&
+        rules.legalMovesFrom(app.state, loc).length > 0;
+      setState(app.state, ok ? { source: loc } : null, { broadcast: true });
+      return;
+    }
+
+    setState(app.state, null, { broadcast: true });
+  }
+
+  function applyTapDie(value) {
+    if (app.state.phase !== 'move') return;
+    if (!app.selection) return;
+    const moves = rules.legalMovesFrom(app.state, app.selection.source);
+    const m = moves.find((mv) => mv.die === value);
+    if (!m) return; // keep selection so another die can be tried
+    const next = rules.applyMove(app.state, {
+      from: app.selection.source, to: m.to, die: m.die,
+    });
+    setState(next, null, { broadcast: true });
   }
 
   // --- Render ---
 
   function render() {
     if (!app.state || !el.canvas || el.screenGame.classList.contains('hidden')) return;
-    const { ctx } = board.resizeCanvas(el.canvas);
-    board.renderBoard(ctx, app.state, app.perspective, { selected: app.selected });
-    document.body.dataset.bgSelected = app.selected === null ? '' : String(app.selected);
+    const { ctx } = board.resizeCanvas(el.canvas, app.side);
+    board.renderBoard(ctx, app.state, app.side, { selection: app.selection });
+  }
+
+  function labelFor(p) {
+    return p === 'p1' ? 'Player 1' : 'Player 2';
   }
 
   function renderUi() {
     if (!app.state) return;
 
-    const isLocal = app.role === 'local';
-    el.youLabel.textContent = isLocal
-      ? `Hotseat — ${labelFor(app.state.turn)} to act`
-      : `You — ${labelFor(app.perspective)}`;
-
-    // Turn indicator
     if (app.state.phase === 'gameover') {
-      const winnerLabel = labelFor(app.state.winner);
-      el.turnIndicator.textContent = isLocal
-        ? `${winnerLabel} wins!`
-        : (app.state.winner === app.perspective ? 'You win!' : 'Opponent wins');
+      el.turnIndicator.textContent = `${labelFor(app.state.winner)} wins!`;
       el.turnIndicator.classList.remove('waiting');
       el.message.textContent = 'All 15 borne off. Nice game.';
       el.message.classList.add('win');
     } else {
       el.message.classList.remove('win');
-      const yourTurn = app.state.turn === app.perspective;
-      const verb = app.state.phase === 'roll' ? 'roll' : 'move';
-      if (isLocal) {
-        el.turnIndicator.textContent = `${labelFor(app.state.turn)} — ${verb}`;
-        el.turnIndicator.classList.remove('waiting');
-      } else if (yourTurn) {
-        el.turnIndicator.textContent = `Your turn — ${verb}`;
-        el.turnIndicator.classList.remove('waiting');
-      } else {
-        el.turnIndicator.textContent = app.state.phase === 'roll'
-          ? "Waiting for opponent's roll…"
-          : 'Waiting for opponent…';
-        el.turnIndicator.classList.add('waiting');
-      }
       el.message.textContent = '';
+      const verb = app.state.phase === 'roll' ? 'to roll' : 'to move';
+      el.turnIndicator.textContent = `${labelFor(app.state.turn)} ${verb}`;
+      el.turnIndicator.classList.remove('waiting');
     }
 
-    // Dice
     renderDice();
 
-    // Buttons
-    const yourTurn = app.state.turn === app.perspective;
-    el.btnRoll.classList.toggle('hidden', !(yourTurn && app.state.phase === 'roll'));
+    el.btnRoll.classList.toggle('hidden', app.state.phase !== 'roll');
     const canReset = app.role === 'host' || app.role === 'local';
     el.btnNew.classList.toggle('hidden', app.state.phase !== 'gameover' || !canReset);
-  }
-
-  function labelFor(player) {
-    return player === 'p1' ? 'Player 1' : 'Player 2';
   }
 
   function renderDice() {
     el.diceRow.innerHTML = '';
     const animate = app.state.rollSeq !== app.lastRollSeq && app.state.phase === 'move';
     app.lastRollSeq = app.state.rollSeq;
-
     if (!app.state.dice[0]) return;
 
-    // Mark a die as "used" when it's no longer in diceRemaining.
-    // For doubles, show up to 4 dice.
+    // Which die values are playable from the current selection?
+    let playable = null;
+    if (app.selection && app.state.phase === 'move') {
+      playable = new Set(
+        rules.legalMovesFrom(app.state, app.selection.source).map((m) => m.die)
+      );
+    }
+
     const isDoubles = app.state.dice[0] === app.state.dice[1];
     const total = isDoubles ? 4 : 2;
-    let remaining = app.state.diceRemaining.slice();
+    const remaining = app.state.diceRemaining.slice();
 
     for (let i = 0; i < total; i++) {
+      const value = isDoubles ? app.state.dice[0] : app.state.dice[i];
       const die = document.createElement('div');
       die.className = 'die';
-      const value = isDoubles ? app.state.dice[0] : app.state.dice[i];
       die.textContent = value;
 
-      // Track uses: consume one from remaining if present
       const idx = remaining.indexOf(value);
-      if (idx === -1) {
+      const used = idx === -1;
+      if (used) {
         die.classList.add('used');
       } else {
         remaining.splice(idx, 1);
       }
+      if (!used && playable && playable.has(value)) die.classList.add('playable');
       if (animate) die.classList.add('rolling');
+
+      if (!used) {
+        die.addEventListener('click', () => forwardIntent({ intent: 'tapDie', value }));
+      }
       el.diceRow.appendChild(die);
     }
   }
 
   // --- Canvas input ---
 
-  el.canvas.addEventListener('click', onCanvasTap);
-
-  function onCanvasTap(e) {
-    if (!app.state) return;
-    if (app.state.phase !== 'move') return;
-    if (app.state.turn !== app.perspective) return;
-
+  el.canvas.addEventListener('click', (e) => {
+    if (!app.state || app.state.phase !== 'move') return;
     const rect = el.canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const target = board.hitTest(x, y, rect.width, rect.height, app.perspective);
-
-    if (target === null) {
-      app.selected = null;
-      render();
-      return;
-    }
-
-    const sign = app.perspective === 'p1' ? 1 : -1;
-    const hasBarCheckers = app.state.bar[app.perspective] > 0;
-
-    if (app.selected === null) {
-      // New selection attempt
-      if (hasBarCheckers) {
-        if (target === 'bar') {
-          const moves = rules.legalMovesFrom(app.state, 'bar');
-          if (moves.length > 0) {
-            app.selected = 'bar';
-          }
-        }
-        // Else: only bar is selectable when checkers on bar
-      } else if (typeof target === 'number' && sign * app.state.board[target] > 0) {
-        const moves = rules.legalMovesFrom(app.state, target);
-        if (moves.length > 0) app.selected = target;
-      }
-      render();
-      return;
-    }
-
-    // Active selection
-    if (target === app.selected) {
-      app.selected = null;
-      render();
-      return;
-    }
-
-    const moves = rules.legalMovesFrom(app.state, app.selected);
-    const match = moves.find((m) => m.to === target);
-    if (match) {
-      const intent = { intent: 'move', from: app.selected, to: match.to, die: match.die };
-      app.selected = null;
-      render();
-      sendIntent(intent);
-      return;
-    }
-
-    // Tapping another own piece (with legal moves) switches selection
-    if (!hasBarCheckers && typeof target === 'number' && sign * app.state.board[target] > 0) {
-      const newMoves = rules.legalMovesFrom(app.state, target);
-      if (newMoves.length > 0) {
-        app.selected = target;
-        render();
-        return;
-      }
-    }
-
-    app.selected = null;
-    render();
-  }
+    const loc = board.hitTest(
+      e.clientX - rect.left, e.clientY - rect.top,
+      rect.width, rect.height, app.side
+    );
+    forwardIntent({ intent: 'tap', loc });
+  });
 
   // --- Buttons ---
 
-  el.btnRoll.addEventListener('click', () => {
-    sendIntent({ intent: 'roll' });
-  });
-
-  el.btnNew.addEventListener('click', () => {
-    // Host-only per renderUi; resets and broadcasts
-    sendIntent({ intent: 'newGame' });
-  });
+  el.btnRoll.addEventListener('click', () => forwardIntent({ intent: 'roll' }));
+  el.btnNew.addEventListener('click', () => forwardIntent({ intent: 'newGame' }));
 
   // --- Resize ---
 
@@ -470,7 +440,6 @@
     render();
     renderUi();
   }
-
   window.addEventListener('resize', resizeAndRender);
   window.addEventListener('orientationchange', resizeAndRender);
 
@@ -479,55 +448,71 @@
   setStatus('idle');
   showScreen('lobby');
 
-  // Auto-join from ?room=CODE (REQ-BG-013). Strip the param afterward so a
-  // reload doesn't loop back into a join attempt against a now-stale room.
   (function tryAutoJoin() {
-    const code = peer.normalizeCode(new URLSearchParams(window.location.search).get('room') || '');
+    const code = peer.normalizeCode(
+      new URLSearchParams(window.location.search).get('room') || ''
+    );
     if (code.length < 4) return;
     history.replaceState({}, '', window.location.pathname);
     startGuest(code);
   })();
 
-  // Dev affordance: expose state for devtools inspection.
-  // Not used by the app itself; safe to leave in production.
-  window.__bg = app;
-  window.__bgSetState = (s) => setState(s, { broadcast: false });
+  // --- Dev affordances (safe in production; not used by the app) ---
 
-  // Test helper: compute page coords for a board location ('bar', 'off',
-  // or a board index 0..23) from the active perspective. Returns {x, y}
-  // for the external test driver to click with real input events.
+  window.__bg = app;
+  window.__bgSetState = (s, sel) => setState(s, sel || null, { broadcast: false });
+
+  // Page coords for a board location ('bar', 'off', or index 0..23) on the
+  // current panel, so an external driver can click it with real input.
   window.__bgCoords = function (where) {
-    const canvas = el.canvas;
-    const r = canvas.getBoundingClientRect();
+    const r = el.canvas.getBoundingClientRect();
+    const side = app.side;
     const padX = 6, padY = 6;
     const boardW = r.width - 2 * padX;
     const boardH = r.height - 2 * padY;
     const frame = Math.max(6, Math.min(boardW, boardH) * 0.025);
-    const barW = boardW * 0.07;
-    const trayW = boardW * 0.08;
     const innerW = boardW - 2 * frame;
     const innerH = boardH - 2 * frame;
-    const pointW = (innerW - barW - trayW) / 12;
+    const nCols = side === 'both' ? 12 : 6;
+    const nTrays = side === 'both' ? 2 : 1;
+    const barW = innerW * (side === 'both' ? 0.05 : 0.07);
+    const trayW = innerW * (side === 'both' ? 0.06 : 0.11);
+    const pointW = (innerW - barW - nTrays * trayW) / nCols;
     const pointH = innerH * 0.44;
     const left = padX + frame;
     const top = padY + frame;
+
+    let cols = [], barX, trayLeftX, trayRightX;
+    if (side === 'left') {
+      trayLeftX = left;
+      const ps = left + trayW;
+      for (let c = 0; c < 6; c++) cols.push(ps + pointW * (c + 0.5));
+      barX = ps + pointW * 6;
+    } else if (side === 'right') {
+      barX = left;
+      const ps = left + barW;
+      for (let c = 0; c < 6; c++) cols.push(ps + pointW * (c + 0.5));
+      trayRightX = ps + pointW * 6;
+    } else {
+      trayLeftX = left;
+      const ps1 = left + trayW;
+      for (let c = 0; c < 6; c++) cols.push(ps1 + pointW * (c + 0.5));
+      barX = ps1 + pointW * 6;
+      const ps2 = barX + barW;
+      for (let c = 0; c < 6; c++) cols.push(ps2 + pointW * (c + 0.5));
+      trayRightX = ps2 + pointW * 6;
+    }
+
     let x, y;
     if (where === 'bar') {
-      x = left + pointW * 6 + barW / 2;
-      y = top + innerH / 2;
+      x = barX + barW / 2; y = top + innerH / 2;
     } else if (where === 'off') {
-      x = left + pointW * 12 + barW + trayW / 2;
-      y = top + innerH / 2;
+      const tx = trayLeftX !== undefined ? trayLeftX : trayRightX;
+      x = tx + trayW / 2; y = top + innerH / 2;
     } else {
-      const idx = Number(where);
-      const persp = app.perspective;
-      const slot = persp === 'p1'
-        ? (idx >= 12 ? { row: 'top', col: idx - 12 } : { row: 'bottom', col: 11 - idx })
-        : (idx >= 12 ? { row: 'bottom', col: 23 - idx } : { row: 'top', col: idx });
-      const colOffset = slot.col < 6
-        ? left + pointW * (slot.col + 0.5)
-        : left + pointW * 6 + barW + pointW * (slot.col - 6 + 0.5);
-      x = colOffset;
+      const slot = board.slotForIndex(Number(where), side);
+      if (!slot) return null;
+      x = cols[slot.col];
       y = slot.row === 'top' ? top + pointH / 2 : top + innerH - pointH / 2;
     }
     return { x: r.left + x, y: r.top + y };

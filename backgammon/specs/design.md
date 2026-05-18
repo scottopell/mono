@@ -35,8 +35,13 @@ sends intent messages and receives state broadcasts.
 - Rendering reads state; it never mutates it. Only two code paths write
   state: host's `applyMove` (authoritative) and guest's `onStateReceived`
   (mirror from network).
-- Board orientation is a render-time concern only. The state array is
-  always indexed the same way regardless of which player is looking.
+- Board orientation is fixed and shared (v2). The state array is always
+  indexed the same way; each phone renders a fixed half of one canonical
+  orientation (host=left, guest=right, local=both). No per-device flip,
+  no rotation on turn change.
+- Selection is also host-authoritative and broadcast with state, because
+  a tap can originate on either phone (both phones are I/O terminals for
+  the one game).
 
 ---
 
@@ -161,50 +166,63 @@ for v2.
 
 ---
 
-## Rendering (`board.js`)
+## Rendering (`board.js`) — v2 split board (REQ-BG-014)
 
-HTML5 Canvas 2D. Single function `renderBoard(ctx, state, perspective)`
-where `perspective` is `"p1"` or `"p2"`.
+HTML5 Canvas 2D. `renderBoard(ctx, state, side, ui)` where `side` is
+`"left"` (host phone), `"right"` (guest phone), or `"both"` (local
+hotseat / solo). **There is no perspective flip and no rotation on turn
+change.** The board has one canonical orientation, identical to v1's old
+p1 view, and each device draws a fixed slice of it:
 
-Layout (CSS logical pixels; canvas uses devicePixelRatio scaling):
+```
+top row L→R:    12 13 14 15 16 17 | (bar) | 18 19 20 21 22 23
+bottom row L→R: 11 10  9  8  7  6 | (bar) |  5  4  3  2  1  0
+```
 
-- Board aspect ratio ~ 1.4:1 (wider than tall).
-- Twelve points per row; bar in the middle splits each row 6-6.
-- Point triangles alternate light/dark, drawn with plain fills.
-- Bar is a vertical strip in the center holding hit checkers.
-- Right-side tray holds borne-off checkers.
+Panel segment order (left→right):
 
-### Perspective flip (REQ-BG-003)
+- `left` : `[P1 tray] [6 cols] [bar strip]`
+- `right`: `[bar strip] [6 cols] [P2 tray]`
+- `both` : `[P1 tray] [6 cols] [bar] [6 cols] [P2 tray]`
 
-Conceptually: the board stored in state has point 0 at the top-left
-(p1's far corner). For the p1 player, we render:
+So the two phones placed edge to edge tile into the full board, with each
+phone's inner-edge bar strip meeting at the seam (the physical gap reads
+as the bar). Point colors alternate by *global* column (0–11) so the
+checkerboard pattern stays continuous across the seam.
 
-- Bottom row: indices 0 → 11 (left-to-right in visual terms: 11 → 0
-  actually, since p1 bears off at the bottom-right).
-- Top row: indices 23 → 12.
+`slotForIndex(idx, side)` returns `{row, col}` or `null` if that index
+is not on this panel; `indexForSlot(side, row, col)` is the inverse used
+by hit-testing. Each phone's bar strip shows only that phone's player's
+bar checkers (host=left=p1, guest=right=p2) so a hit shows up on the
+phone of whoever was hit (REQ-BG-014). Trays: P1's on the left panel,
+P2's on the right.
 
-For p2, we mirror: bottom row = indices 12 → 23, top row = indices 11
-→ 0. Checker colors swap (p2's perspective shows p2's own checkers at
-the bottom moving up).
+### Interaction — tap-source then tap-die (REQ-BG-015)
 
-The mapping is encapsulated in `pointScreenPosition(idx, perspective)`
-returning `{quadrant, slot, anchor}` where `anchor` is the base of the
-triangle to stack checkers from.
+`hitTest(x, y, w, h, side)` returns a board index, `"bar"`, `"off"`, or
+`null`. Selection is **host-authoritative** (`{source}`), broadcast
+alongside state so both phones highlight identically. Every tap on
+either phone is forwarded to the host as a raw intent
+(`{intent:'tap', loc}` / `{intent:'tapDie', value}` / `{intent:'roll'}`);
+the host applies it against the current turn (two-people trust model —
+whoever physically taps, the host treats it as the current player's
+action). Flow:
 
-### Interaction (REQ-BG-005)
+1. Tap a current-player checker → host sets selection.
+2. Each phone locally computes `legalMovesFrom(state, source)` to
+   highlight playable dice; if a destination lands on *this* panel it
+   also draws a faint destination marker with the die number.
+3. Tap a playable die → host runs `applyMove` with the move whose
+   `die` matches; destination is implied, never tapped, so a checker
+   whose destination is on the other phone is still moveable.
 
-`hitTestPoint(x, y, perspective)` returns a board index or `"bar"` or
-`null`. `main.js` owns the selection state — it's UI, not game state,
-and doesn't get synced. When a point is selected:
-
-1. Compute `legalMovesFrom(state, idx)`.
-2. Highlight destinations.
-3. On tap of a highlighted destination, dispatch a move intent.
+Tapping `"off"` (a tray) is a deliberate no-op so an accidental tray
+tap can't drop the current selection.
 
 ### Checker stacking
 
-Up to five checkers render as full-size. Stacks of 6+ render as a
-compressed stack with a count label.
+Up to five checkers render full-size; stacks of 6+ render compressed
+with a count label. Bar/tray stacks cap their visible pucks similarly.
 
 ---
 
@@ -228,13 +246,14 @@ as our peer ID. On collision (very unlikely at two-people scale), retry.
 **Message envelope:**
 
 ```js
-// Host → Guest
-{ type: "state", state: <full state object> }
+// Host → Guest  (selection broadcast alongside state, v2)
+{ type: "state", state: <full state object>, selection: {source}|null }
 
-// Guest → Host
+// Guest → Host  (raw taps; host attributes them to the current turn)
 { type: "intent", intent: "roll" }
-{ type: "intent", intent: "move", from: <idx|"bar">, to: <idx|"off"> }
-{ type: "intent", intent: "endTurn" }
+{ type: "intent", intent: "tap", loc: <idx|"bar"|"off"|null> }
+{ type: "intent", intent: "tapDie", value: <1..6> }
+{ type: "intent", intent: "newGame" }
 ```
 
 Host broadcasts after every state mutation. Guest is pure mirror — it
@@ -330,14 +349,18 @@ page (`test.html`) or browser devtools. Target coverage:
 ### Integration / manual
 
 Two-browser test: open the app in two tabs (or two devices), create a
-room on one, join from the other. Play a few full turns, confirm
-perspective flip, confirm hits and bearing off animate on both sides.
+room on one, join from the other. Play a few full turns; confirm hits
+and bearing off appear on both sides and that the board does not rotate
+on turn change.
 
-### Perspective flip
+### Split-board continuity
 
-Visual inspection: with a known state, render p1 and p2 perspectives
-side-by-side; verify that what's "bottom-right home board" on p1 is
-the "top-left opponent's home" on p2.
+Visual inspection: render `left` and `right` halves with a known state
+and confirm they tile into the full canonical board — top row
+`12..17|18..23`, bottom `11..6|5..0`, point-color alternation continuous
+across the seam, P1's bar/tray only on the left phone and P2's only on
+the right. Local hotseat (`both`) renders the whole board on one screen
+for solo playtesting.
 
 ---
 

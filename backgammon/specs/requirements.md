@@ -55,6 +55,12 @@ the most frustrating multiplayer failure mode.
 
 ### REQ-BG-003: Play From Your Own Perspective
 
+**DEPRECATED:** Replaced by REQ-BG-014. v1 flipped the board per device so
+each player saw their own home at the bottom. v2 instead treats the two
+phones as one physical board in a single shared orientation (phones laid
+side by side on a table), so there is no per-device flip. Original EARS
+statements preserved below for history.
+
 WHEN either player views the board
 THE SYSTEM SHALL render that player's home board at the bottom of their
 screen and their pieces moving bottom-to-top toward bearing off
@@ -87,6 +93,11 @@ numbers at the same time, or trust evaporates.
 ---
 
 ### REQ-BG-005: Move by Tap-to-Select, Tap-to-Destination
+
+**DEPRECATED:** Replaced by REQ-BG-015. With the split board a destination
+can be on the other player's phone, which you can't tap. v2 commits a move
+by tapping the source then tapping a die instead. Original EARS statements
+preserved below for history.
 
 WHEN it is your turn and dice remain
 THE SYSTEM SHALL let you tap one of your points to select it and highlight
@@ -225,5 +236,56 @@ the lobby
 adds friction to the moment when someone says "want to play?" Sending a
 link in any messaging app is one tap to send and one tap to join — the
 same flow people already use to share YouTube videos or photos.
+
+---
+
+### REQ-BG-014: One Shared Board Across Two Phones
+
+WHEN two players place their phones side by side in landscape
+THE SYSTEM SHALL render one continuous board in a single fixed orientation,
+the host's phone showing the left twelve points and the guest's phone the
+right twelve, with the gap between the phones reading as the bar
+
+WHEN it becomes the other player's turn
+THE SYSTEM SHALL keep the board in the same orientation (no rotation or flip)
+
+WHEN a checker is hit
+THE SYSTEM SHALL show that checker on the bar of the phone belonging to the
+player who was hit
+
+WHEN a player bears a checker off
+THE SYSTEM SHALL increment that player's tray, shown on that player's own
+phone
+
+**Rationale:** Two people sitting together with a real board don't each get
+a private mirrored view — they share one physical object between them.
+Making the phones tile into a single board recreates that: you point at the
+same triangle, you both see the same hit land, it feels like a board on the
+table rather than two synced screens.
+
+---
+
+### REQ-BG-015: Move by Tap-Source then Tap-Die
+
+WHEN it is the current player's turn with dice remaining
+THE SYSTEM SHALL let either player tap one of the current player's checkers
+on either phone to select it as the move source
+
+WHEN a source is selected
+THE SYSTEM SHALL indicate which dice can legally be played from it, and show
+the resulting destination on whichever phone it falls on
+
+WHEN the player taps a playable die
+THE SYSTEM SHALL move the selected checker the distance of that die,
+consuming the die, and update both phones
+
+WHEN the player taps an empty point or a non-playable location
+THE SYSTEM SHALL clear or leave the selection unchanged without moving
+
+**Rationale:** With a shared board split across two phones, a checker's
+destination is often on the *other* person's phone, which you can't reach to
+tap. Tapping the source and then a die removes the need to tap a
+destination at all — the die already determines where the checker lands —
+so a move is always completable from whichever phone the checker sits on.
 
 ---

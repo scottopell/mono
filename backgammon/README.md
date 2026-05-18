@@ -1,8 +1,10 @@
 # Backgammon
 
-Two-phone multiplayer backgammon as a static site. One player creates a
-room and shares a short code; the other joins. Both see the board from
-their own perspective in real time via WebRTC.
+Two-phone multiplayer backgammon as a static site. Lay both phones side
+by side in landscape: the two screens form **one continuous board** (host
+= left half, guest = right half, the gap between them is the bar). One
+player creates a room and shares a one-tap invite link; the other opens
+it. Synced in real time via WebRTC.
 
 See [`VISION.md`](./VISION.md) for the product vision and
 [`specs/`](./specs/) for requirements, design, and status.
@@ -18,12 +20,16 @@ npx http-server . -p 8080
 ```
 
 Then open http://localhost:8080 in two browser tabs (or two devices on
-the same network). Click **New Game** in one, copy the code to the
-**Join** field in the other.
+the same network). Click **New Game** in one, share the invite link (or
+copy the code to the **Join** field) on the other. Each device renders
+its fixed half of the board; place them edge to edge in landscape.
 
-For solo playtesting, click **Play locally (one device)** — runs a
-hotseat game on the same device. The board flips perspective to the
-active player each turn.
+Moves are made by **tapping a checker, then tapping a die** — the die
+determines the destination, so a checker whose destination is on the
+other phone is still moveable from whichever phone it sits on.
+
+For solo playtesting, click **Play locally (one device)** — renders the
+full board on one screen, no peer connection, no flip or rotation.
 
 ## Deployment
 
@@ -44,12 +50,14 @@ home networks but will fail on symmetric-NAT cellular connections.
 - `peer.js` — PeerJS (WebRTC) session management
 - `main.js` — UI wiring, lobby → game flow
 
-Room creator is **host** and owns authoritative state. The joiner is a
-**guest** mirror — it sends intents (roll, move) and renders whatever
-state the host broadcasts back. See `specs/design.md` for details.
+Room creator is **host** and owns authoritative state *and* the current
+selection. Both phones are I/O terminals: any tap is forwarded to the
+host as a raw intent and attributed to the current turn. The board has
+one fixed orientation; `board.js` renders a fixed half per device
+(`left`/`right`/`both`). See `specs/design.md` for details.
 
 ## Scope
 
-v1 implements the full game (board, bar, bearing off, hitting,
-winner). Doubling cube, history, animations, and sound are deferred
-per `VISION.md`.
+Full game: board, bar, bearing off, hitting, winner detection,
+split-board two-phone layout, tap-source-then-tap-die input. Doubling
+cube, history, animations, and sound are deferred per `VISION.md`.
